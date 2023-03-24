@@ -19,6 +19,7 @@ public class MainMenu
     private          bool             _started;
 
     private ConnectionMultiplexer _redisMultiplexer;
+    private RedisStreamEngine     _redisStreamEngine;
 
     //private DisplayFlightInfoStats _displayStats;
 
@@ -26,14 +27,20 @@ public class MainMenu
 
     public MainMenu(ILogger<MainMenu> logger, IServiceProvider serviceProvider)
     {
-        _logger          = logger;
-        _serviceProvider = serviceProvider;
+        _logger            = logger;
+        _serviceProvider   = serviceProvider;
+        _redisStreamEngine = _serviceProvider.GetService<RedisStreamEngine>();
+        if (_redisStreamEngine == null)
+            throw new ApplicationException("Unable to build a RedisStreamEngine");
 
 
-        _redisMultiplexer = ConnectionMultiplexer.Connect(new ConfigurationOptions
+        _redisStreamEngine.RedisConfigurationOptions = new ConfigurationOptions
         {
             Password = "redis23", EndPoints = { new DnsEndPoint("podmanc.slug.local", 6379) },
-        });
+        };
+        _redisStreamEngine.Initialize();
+
+
         /*
 
         _flightInfoEngine = _serviceProvider.GetService<FlightInfoEngine>();
@@ -52,6 +59,7 @@ public class MainMenu
 
     internal async Task Start()
     {
+        //RedisStream streamA        = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
         bool keepProcessing = true;
 
         // Initialize the Engines
@@ -90,9 +98,9 @@ public class MainMenu
             switch (keyInfo.Key)
             {
                 case ConsoleKey.T:
-                    RedisStream streamA = new RedisStream("testStream", "testProgram", _redisMultiplexer);
-                    RedisStream streamB = new RedisStream("B", "testProgram", _redisMultiplexer);
-                    RedisStream streamC = new RedisStream("C", "testProgram", _redisMultiplexer);
+                    RedisStream streamA = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
+                    RedisStream streamB = await _redisStreamEngine.GetRedisStream("B", "testProgram");
+                    RedisStream streamC = await _redisStreamEngine.GetRedisStream("C", "testProgram");
 
 
                     streamA.DeleteStream();

@@ -50,7 +50,12 @@ public class Program
     /// <returns></returns>
     static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
-            .ConfigureServices((_, services) => { services.AddTransient<MainMenu>(); })
+            .ConfigureServices((_, services) =>
+            {
+                services.AddTransient<MainMenu>();
+                services.AddTransient<RedisStreamEngine>();
+                services.AddTransient<RedisStream>();
+            })
             .ConfigureLogging((_, logging) =>
             {
                 logging.ClearProviders();
