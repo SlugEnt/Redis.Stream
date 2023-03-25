@@ -90,9 +90,9 @@ public class SLRStreamEngine
     /// <returns></returns>
     /// 
 
-//    public async Task<SLRStream> GetRedisStream(string streamName, string applicationName,
+//    public async Task<SLRStream> GetSLRStreamAsync(string streamName, string applicationName,
 //                                                EnumSLRStreamTypes redisStreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer)
-    public async Task<SLRStream> GetRedisStream(SLRStreamConfig slrStreamConfig)
+    public async Task<SLRStream> GetSLRStreamAsync(SLRStreamConfig slrStreamConfig)
     {
         if (!IsInitialized)
             throw new ApplicationException("The RedisStreamEngine has not been initialized yet.");

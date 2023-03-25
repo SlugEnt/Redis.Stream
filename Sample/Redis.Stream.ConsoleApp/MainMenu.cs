@@ -149,12 +149,12 @@ public class MainMenu
             StreamName = "A", ApplicationName = "testProgram", StreamType = EnumSLRStreamTypes.ProducerAndConsumerGroup, MaxPendingAcknowledgements = 25,
         };
 
-        SLRStream streamA = await _redisStreamEngine.GetRedisStream(config);
+        SLRStream streamA = await _redisStreamEngine.GetSLRStreamAsync(config);
         config.StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
         config.StreamName = "B";
-        SLRStream streamB = await _redisStreamEngine.GetRedisStream(config);
+        SLRStream streamB = await _redisStreamEngine.GetSLRStreamAsync(config);
         config.StreamName = "C";
-        SLRStream streamC = await _redisStreamEngine.GetRedisStream(config);
+        SLRStream streamC = await _redisStreamEngine.GetSLRStreamAsync(config);
 
 
         //       streamA.DeleteStream();
@@ -171,16 +171,16 @@ public class MainMenu
         //message.AddProperty("UserName", "Bob Jones");
 
 
-        streamA.SendMessage(messageUser);
+        streamA.SendMessageAsync(messageUser);
         SLRMessage bMsg = SLRMessage.CreateMessage("from b");
-        streamB.SendMessage(bMsg);
-        streamB.SendMessage(bMsg);
-        streamB.SendMessage(bMsg);
+        streamB.SendMessageAsync(bMsg);
+        streamB.SendMessageAsync(bMsg);
+        streamB.SendMessageAsync(bMsg);
 
         SLRMessage cMsg = SLRMessage.CreateMessage("from C");
-        streamC.SendMessage(cMsg);
-        streamC.SendMessage(cMsg);
-        streamC.SendMessage(cMsg);
+        streamC.SendMessageAsync(cMsg);
+        streamC.SendMessageAsync(cMsg);
+        streamC.SendMessageAsync(cMsg);
 
 
         //StreamEntry[] messages = await streamA.ReadStreamAsync();

@@ -29,4 +29,16 @@ public class SLRStreamConfig
     /// The Redis Connection Object.  This typically is set by the engine and does not need to be manually set.
     /// </summary>
     public ConnectionMultiplexer Multiplexer { get; set; }
+
+
+    /// <summary>
+    /// Where should the stream start consuming messages from.
+    /// </summary>
+    public EnumSLRStreamStartingPoints StartingMessage { get; set; } = EnumSLRStreamStartingPoints.Now;
+
+
+    /// <summary>
+    /// This only applies if the StartingMessage is set to SpecifiedValue
+    /// </summary>
+    public RedisValue StartingMessageId { get; set; }
 }

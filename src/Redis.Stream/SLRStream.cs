@@ -70,6 +70,35 @@ public class SLRStream
                 break;
         }
 
+        // We need to query the stream to get some info.
+
+
+        // Set Stream Read Starting Position
+        switch (streamConfig.StartingMessage)
+        {
+            case EnumSLRStreamStartingPoints.Beginning:
+                LastMessageId = "0-0";
+                break;
+            case EnumSLRStreamStartingPoints.Now:
+                if (_db.KeyExists(StreamName))
+                {
+                    StreamInfo streamInfo = _db.StreamInfo(StreamName);
+                    LastMessageId = streamInfo.LastGeneratedId;
+                }
+                else
+                    LastMessageId = "0-0";
+
+                break;
+            case EnumSLRStreamStartingPoints.LastConsumedForConsumerGroup: break;
+            case EnumSLRStreamStartingPoints.SpecifiedValue:
+                if (streamConfig.StartingMessageId == RedisValue.EmptyString)
+                    throw new
+                        ApplicationException($"You said you wanted to specify the starting message for Stream: {StreamName}, but the StartingMessageId in the config was never set.");
+
+                break;
+        }
+
+
         try
         {
             // Create the Consumer Group if that type of Stream
@@ -247,6 +276,11 @@ public class SLRStream
 
 
     /// <summary>
+    /// The Id of the last message read by this Stream
+    /// </summary>
+    public RedisValue LastMessageId { get; protected set; }
+
+    /// <summary>
     /// Number of Messages we have received.
     /// </summary>
     public long StatisticMessagesReceived { get; protected set; }
@@ -266,14 +300,14 @@ public class SLRStream
     /// Sends the given message to the stream
     /// </summary>
     /// <param name="message"></param>
-    public void SendMessage(SLRMessage message)
+    public async Task SendMessageAsync(SLRMessage message)
     {
         if (!CanProduceMessages)
             throw new
                 ApplicationException("Attempted to send a message to a stream that you have NOT specified as a stream you can produce messages for with this application");
 
         NameValueEntry[] values = message.GetNameValueEntries();
-        _db.StreamAdd(StreamName, values);
+        _db.StreamAddAsync(StreamName, values);
     }
 
 
@@ -289,14 +323,19 @@ public class SLRStream
             throw new ApplicationException("Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application");
 
 
-        StreamPosition                    streamPosition    = new(StreamName, "0-0");
-        StreamPosition[]                  streamsToRetrieve = new StreamPosition[] { streamPosition };
-        StackExchange.Redis.RedisStream[] streams           = await _db.StreamReadAsync(streamsToRetrieve, numberOfMessagesToRetrieve);
-        StackExchange.Redis.RedisStream   stream            = streams[0];
+//        StreamPosition   streamPosition    = new(StreamName, "0-0");
+//        StreamPosition[] streamsToRetrieve = new StreamPosition[] { streamPosition };
+        RedisValue    lastMessageId = "(" + LastMessageId;
+        StreamEntry[] messages      = await _db.StreamRangeAsync(StreamName, lastMessageId, "+", numberOfMessagesToRetrieve);
 
-        Console.WriteLine($"Stream: {stream.Key} | ");
-        StatisticMessagesReceived += stream.Entries.Length;
-        return stream.Entries;
+
+        // Store the Last Read Message ID
+        if (messages.Length > 0)
+            LastMessageId = messages[messages.Length - 1].Id;
+
+
+        StatisticMessagesReceived += messages.Length;
+        return messages;
     }
 
 

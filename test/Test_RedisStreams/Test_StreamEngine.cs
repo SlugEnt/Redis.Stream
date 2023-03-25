@@ -98,7 +98,7 @@ public class Tests
             StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
         };
 
-        SLRStream producer = await _slrStreamEngine.GetRedisStream(config);
+        SLRStream producer = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(producer, "A10:");
         Assert.AreEqual(streamName, producer.StreamName, "A20:");
         Assert.AreEqual(appName, producer.ApplicationName, "A20:");
@@ -124,7 +124,7 @@ public class Tests
             StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
         };
 
-        SLRStream consumer = await _slrStreamEngine.GetRedisStream(config);
+        SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(consumer, "A10:");
         Assert.AreEqual(streamName, consumer.StreamName, "A20:");
         Assert.AreEqual(appName, consumer.ApplicationName, "A20:");
@@ -150,7 +150,7 @@ public class Tests
             StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
         };
 
-        SLRStream combo = await _slrStreamEngine.GetRedisStream(config);
+        SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");
         Assert.IsTrue(combo.CanProduceMessages, "A20:");
         Assert.IsTrue(combo.CanConsumeMessages, "A30:");
@@ -173,7 +173,7 @@ public class Tests
             StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
         };
 
-        SLRStream combo = await _slrStreamEngine.GetRedisStream(config);
+        SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");
         Assert.IsTrue(combo.CanProduceMessages, "A20:");
         Assert.IsTrue(combo.CanConsumeMessages, "A30:");
@@ -197,7 +197,7 @@ public class Tests
             StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
         };
 
-        SLRStream combo = await _slrStreamEngine.GetRedisStream(config);
+        SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");
         Assert.IsFalse(combo.CanProduceMessages, "A20:");
         Assert.IsTrue(combo.CanConsumeMessages, "A30:");
