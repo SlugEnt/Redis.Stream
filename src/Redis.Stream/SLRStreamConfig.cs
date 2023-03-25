@@ -2,9 +2,12 @@
 
 namespace Redis.Stream;
 
-public class StreamConfig
+/// <summary>
+/// Provides the configuration for a stream
+/// </summary>
+public class SLRStreamConfig
 {
-    public StreamConfig() { }
+    public SLRStreamConfig() { }
 
     public string StreamName { get; set; }
 
@@ -19,11 +22,11 @@ public class StreamConfig
     /// <summary>
     /// The type of stream this is - what it can do:  Produce, Consume, Both, Consume via Group
     /// </summary>
-    public EnumRedisStreamTypes StreamType { get; set; }
+    public EnumSLRStreamTypes StreamType { get; set; }
 
 
     /// <summary>
-    /// The Redis Connection Object
+    /// The Redis Connection Object.  This typically is set by the engine and does not need to be manually set.
     /// </summary>
     public ConnectionMultiplexer Multiplexer { get; set; }
 }

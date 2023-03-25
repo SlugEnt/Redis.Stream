@@ -10,59 +10,61 @@ using StackExchange.Redis;
 
 namespace Redis.Stream;
 
-public class RedisStream
+public class SLRStream
 {
-    private ILogger<RedisStream>  _logger;
+    private ILogger<SLRStream>    _logger;
     private ConnectionMultiplexer _redisMultiplexer;
     private IDatabase             _db;
     private RedisValue[]          _pendingAcknowledgements;
-    private int _pendingAcknowledgementCount;
+    private int                   _pendingAcknowledgementCount;
 
 
-    public RedisStream(ILogger<RedisStream> logger, IServiceProvider serviceProvider) { _logger = logger; }
+    public SLRStream(ILogger<SLRStream> logger, IServiceProvider serviceProvider) { _logger = logger; }
 
 
 
     /// <summary>
     /// Since we create via DependencyInjection we need a way of setting the stream properties after creation
     /// </summary>
-    /// <param name="streamName"></param>
-    /// <param name="applicationName"></param>
+    /// <param name="streamConfig">The configuration object for the stream</param>
+    /// <param name="multiplexer">If not null, it overrides any multiplexer set in the config</param>
+
     //internal async Task SetStreamValues(string streamName, string applicationName, EnumRedisStreamTypes streamType, ConnectionMultiplexer multiplexer)
-    internal async Task SetStreamConfig (StreamConfig streamConfig) {
+    internal async Task SetStreamConfig(SLRStreamConfig streamConfig, ConnectionMultiplexer multiplexer = null)
+    {
         //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
         StreamName                        = streamConfig.StreamName;
         ApplicationName                   = streamConfig.ApplicationName;
-        _redisMultiplexer                 = streamConfig.Multiplexer;
-        _db                               = _redisMultiplexer.GetDatabase();
+        _redisMultiplexer                 = multiplexer == null ? streamConfig.Multiplexer : multiplexer;
         StreamType                        = streamConfig.StreamType;
         MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
+        _db                               = _redisMultiplexer.GetDatabase();
         _pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
         _pendingAcknowledgementCount      = 0;
 
 
         switch (StreamType)
         {
-            case EnumRedisStreamTypes.ProducerOnly:
+            case EnumSLRStreamTypes.ProducerOnly:
                 CanProduceMessages = true;
                 break;
 
-            case EnumRedisStreamTypes.SimpleConsumerOnly:
+            case EnumSLRStreamTypes.SimpleConsumerOnly:
                 CanConsumeMessages = true;
                 break;
 
-            case EnumRedisStreamTypes.ConsumerGroupOnly:
+            case EnumSLRStreamTypes.ConsumerGroupOnly:
                 CanConsumeMessages = true;
                 IsConsumerGroup    = true;
                 break;
 
-            case EnumRedisStreamTypes.ProducerAndConsumerGroup:
+            case EnumSLRStreamTypes.ProducerAndConsumerGroup:
                 CanProduceMessages = true;
                 CanConsumeMessages = true;
                 IsConsumerGroup    = true;
                 break;
 
-            case EnumRedisStreamTypes.ProducerAndSimpleConsumer:
+            case EnumSLRStreamTypes.ProducerAndSimpleConsumer:
                 CanProduceMessages = true;
                 CanConsumeMessages = true;
                 break;
@@ -191,7 +193,7 @@ public class RedisStream
     /// <summary>
     /// The type of stream
     /// </summary>
-    public EnumRedisStreamTypes StreamType { get; protected set; }
+    public EnumSLRStreamTypes StreamType { get; protected set; }
 
     /// <summary>
     /// If true, this stream can consume messages
@@ -264,7 +266,7 @@ public class RedisStream
     /// Sends the given message to the stream
     /// </summary>
     /// <param name="message"></param>
-    public void SendMessage(RedisMessage message)
+    public void SendMessage(SLRMessage message)
     {
         if (!CanProduceMessages)
             throw new
@@ -319,7 +321,7 @@ public class RedisStream
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task AcknowledgeMessage(RedisMessage message) { await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, message.Id); }
+    public async Task AcknowledgeMessage(SLRMessage message) { await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, message.Id); }
 
 
 
@@ -327,10 +329,7 @@ public class RedisStream
     /// Sends an acknowledgement of the messages to the Redis server
     /// </summary>
     /// <returns></returns>
-    protected async Task<long> AcknowledgePendingMessages()
-    {
-        return await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, _pendingAcknowledgements);
-    }
+    protected async Task<long> AcknowledgePendingMessages() { return await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, _pendingAcknowledgements); }
 
 
 
@@ -339,7 +338,7 @@ public class RedisStream
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task AddPendingAcknowledgement(RedisMessage message)
+    public async Task AddPendingAcknowledgement(SLRMessage message)
     {
         _pendingAcknowledgementCount++;
         _pendingAcknowledgements[_pendingAcknowledgementCount] = message.Id;

@@ -1,6 +1,6 @@
 ﻿namespace Redis.Stream;
 
-public enum EnumRedisStreamTypes
+public enum EnumSLRStreamTypes
 {
     /// <summary>
     /// Can only produce messages

@@ -19,7 +19,7 @@ public class MainMenu
     private          bool             _started;
 
     private ConnectionMultiplexer _redisMultiplexer;
-    private RedisStreamEngine     _redisStreamEngine;
+    private SLRStreamEngine       _redisStreamEngine;
 
     //private DisplayFlightInfoStats _displayStats;
 
@@ -29,7 +29,7 @@ public class MainMenu
     {
         _logger            = logger;
         _serviceProvider   = serviceProvider;
-        _redisStreamEngine = _serviceProvider.GetService<RedisStreamEngine>();
+        _redisStreamEngine = _serviceProvider.GetService<SLRStreamEngine>();
         if (_redisStreamEngine == null)
             throw new ApplicationException("Unable to build a RedisStreamEngine");
 
@@ -144,9 +144,17 @@ public class MainMenu
 
     internal async Task ProcessStreams()
     {
-        RedisStream streamA = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
-        RedisStream streamB = await _redisStreamEngine.GetRedisStream("B", "testProgram");
-        RedisStream streamC = await _redisStreamEngine.GetRedisStream("C", "testProgram");
+        SLRStreamConfig config = new SLRStreamConfig()
+        {
+            StreamName = "A", ApplicationName = "testProgram", StreamType = EnumSLRStreamTypes.ProducerAndConsumerGroup, MaxPendingAcknowledgements = 25,
+        };
+
+        SLRStream streamA = await _redisStreamEngine.GetRedisStream(config);
+        config.StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
+        config.StreamName = "B";
+        SLRStream streamB = await _redisStreamEngine.GetRedisStream(config);
+        config.StreamName = "C";
+        SLRStream streamC = await _redisStreamEngine.GetRedisStream(config);
 
 
         //       streamA.DeleteStream();
@@ -154,8 +162,8 @@ public class MainMenu
         //       streamC.DeleteStream();
 
 
-        SampleUser   userA       = new("Bob Jones", 25, false);
-        RedisMessage messageUser = RedisMessage.CreateMessage<SampleUser>(userA);
+        SampleUser userA       = new("Bob Jones", 25, false);
+        SLRMessage messageUser = SLRMessage.CreateMessage<SampleUser>(userA);
         messageUser.AddProperty("Type", "user");
         messageUser.AddProperty("User", userA);
 
@@ -164,12 +172,12 @@ public class MainMenu
 
 
         streamA.SendMessage(messageUser);
-        RedisMessage bMsg = RedisMessage.CreateMessage("from b");
+        SLRMessage bMsg = SLRMessage.CreateMessage("from b");
         streamB.SendMessage(bMsg);
         streamB.SendMessage(bMsg);
         streamB.SendMessage(bMsg);
 
-        RedisMessage cMsg = RedisMessage.CreateMessage("from C");
+        SLRMessage cMsg = SLRMessage.CreateMessage("from C");
         streamC.SendMessage(cMsg);
         streamC.SendMessage(cMsg);
         streamC.SendMessage(cMsg);
@@ -179,7 +187,7 @@ public class MainMenu
         StreamEntry[] messages = await streamA.ReadStreamGroupAsync();
         foreach (StreamEntry streamEntry in messages)
         {
-            RedisMessage redisMessage = new RedisMessage(streamEntry);
+            SLRMessage redisMessage = new SLRMessage(streamEntry);
             Console.WriteLine($"  Message: {streamEntry.Id}");
             foreach (NameValueEntry streamEntryValue in streamEntry.Values)
             {

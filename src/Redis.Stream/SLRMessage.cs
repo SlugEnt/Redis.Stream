@@ -3,7 +3,7 @@ using StackExchange.Redis;
 
 namespace Redis.Stream;
 
-public class RedisMessage
+public class SLRMessage
 {
     private Dictionary<RedisValue, RedisValue> _properties;
 
@@ -12,14 +12,14 @@ public class RedisMessage
     /// <summary>
     /// Constructor when creating message to send to Redis Stream
     /// </summary>
-    public RedisMessage() { _properties = new(); }
+    public SLRMessage() { _properties = new(); }
 
 
     /// <summary>
     /// Constructor when creating message read from Redis Stream
     /// </summary>
     /// <param name="id"></param>
-    public RedisMessage(StreamEntry streamEntry) : this()
+    public SLRMessage(StreamEntry streamEntry) : this()
     {
         Id             = streamEntry.Id;
         RawStreamEntry = streamEntry;
@@ -50,9 +50,9 @@ public class RedisMessage
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
-    public static RedisMessage CreateMessage(string text, EnumEncodingType encodingType = EnumEncodingType.Text)
+    public static SLRMessage CreateMessage(string text, EnumEncodingType encodingType = EnumEncodingType.Text)
     {
-        RedisMessage message = new RedisMessage();
+        SLRMessage message = new SLRMessage();
         message.AddProperty("enc", encodingType);
         message.Data = text;
         return message;
@@ -64,9 +64,9 @@ public class RedisMessage
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
-    public static RedisMessage CreateMessage(string text)
+    public static SLRMessage CreateMessage(string text)
     {
-        RedisMessage message = new RedisMessage();
+        SLRMessage message = new SLRMessage();
         message.AddProperty("enc", EnumEncodingType.Text);
         message.Data = text;
         return message;
@@ -79,10 +79,10 @@ public class RedisMessage
     /// <typeparam name="T">Any Nullable object type</typeparam>
     /// <param name="value">An instance of T</param>
     /// <returns></returns>
-    public static RedisMessage CreateMessage<T>(T value)
+    public static SLRMessage CreateMessage<T>(T value)
     {
-        string       json    = System.Text.Json.JsonSerializer.Serialize(value);
-        RedisMessage message = CreateMessage(json, EnumEncodingType.ApplicationJson);
+        string     json    = System.Text.Json.JsonSerializer.Serialize(value);
+        SLRMessage message = CreateMessage(json, EnumEncodingType.ApplicationJson);
         return message;
     }
 

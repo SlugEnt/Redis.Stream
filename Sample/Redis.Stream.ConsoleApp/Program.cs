@@ -53,8 +53,8 @@ public class Program
             .ConfigureServices((_, services) =>
             {
                 services.AddTransient<MainMenu>();
-                services.AddTransient<RedisStreamEngine>();
-                services.AddTransient<RedisStream>();
+                services.AddTransient<SLRStreamEngine>();
+                services.AddTransient<SLRStream>();
             })
             .ConfigureLogging((_, logging) =>
             {
