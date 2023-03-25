@@ -170,4 +170,10 @@ public class RedisMessage
 
         return default(T);
     }
+
+
+
+#region "Static Methods"
+
+#endregion
 }

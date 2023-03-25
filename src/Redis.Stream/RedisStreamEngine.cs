@@ -81,7 +81,19 @@ public class RedisStreamEngine
 
         ILogger<RedisStream> logStream = _loggerFactory.CreateLogger<RedisStream>();
         RedisStream          stream    = _serviceProvider.GetService<RedisStream>();
-        await stream.SetStreamValues(streamName, applicationName, redisStreamType, _multiplexer);
+
+        StreamConfig config = new StreamConfig()
+        {
+            StreamName                 = streamName,
+            ApplicationName            = applicationName,
+            Multiplexer                = _multiplexer,
+            StreamType                 = redisStreamType,
+            MaxPendingAcknowledgements = 25,
+        };
+
+        await stream.SetStreamConfig(config);
+
+        //await stream.SetStreamValues(streamName, applicationName, redisStreamType, _multiplexer);
         return stream;
     }
 

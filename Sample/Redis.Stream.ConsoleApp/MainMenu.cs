@@ -59,7 +59,10 @@ public class MainMenu
 
     internal async Task Start()
     {
-        //RedisStream streamA        = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
+        // TODO TEMPorary only
+        await ProcessStreams();
+
+
         bool keepProcessing = true;
 
         // Initialize the Engines
@@ -97,50 +100,7 @@ public class MainMenu
 
             switch (keyInfo.Key)
             {
-                case ConsoleKey.T:
-                    RedisStream streamA = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
-                    RedisStream streamB = await _redisStreamEngine.GetRedisStream("B", "testProgram");
-                    RedisStream streamC = await _redisStreamEngine.GetRedisStream("C", "testProgram");
-
-
-                    streamA.DeleteStream();
-                    streamB.DeleteStream();
-                    streamC.DeleteStream();
-
-
-                    SampleUser   userA       = new("Bob Jones", 25, false);
-                    RedisMessage messageUser = RedisMessage.CreateMessage<SampleUser>(userA);
-                    messageUser.AddProperty("Type", "user");
-                    messageUser.AddProperty("User", userA);
-
-                    //RedisMessage message = RedisMessage.CreateMessage("This is a message");
-                    //message.AddProperty("UserName", "Bob Jones");
-
-
-                    streamA.SendMessage(messageUser);
-                    RedisMessage bMsg = RedisMessage.CreateMessage("from b");
-                    streamB.SendMessage(bMsg);
-                    streamB.SendMessage(bMsg);
-                    streamB.SendMessage(bMsg);
-
-                    RedisMessage cMsg = RedisMessage.CreateMessage("from C");
-                    streamC.SendMessage(cMsg);
-                    streamC.SendMessage(cMsg);
-                    streamC.SendMessage(cMsg);
-
-
-                    StreamEntry[] messages = await streamA.ReadStreamAsync();
-                    foreach (StreamEntry streamEntry in messages)
-                    {
-                        RedisMessage redisMessage = new RedisMessage(streamEntry);
-                        Console.WriteLine($"  Message: {streamEntry.Id}");
-                        foreach (NameValueEntry streamEntryValue in streamEntry.Values)
-                        {
-                            Console.WriteLine($"    --> {streamEntryValue.Name}  :  {streamEntryValue.Value}");
-                        }
-                    }
-
-                    break;
+                case ConsoleKey.T: break;
 
                 case ConsoleKey.S: break;
 
@@ -181,6 +141,59 @@ public class MainMenu
         return true;
     }
 
+
+    internal async Task ProcessStreams()
+    {
+        RedisStream streamA = await _redisStreamEngine.GetRedisStream("A", "testProgram", EnumRedisStreamTypes.ProducerAndConsumerGroup);
+        RedisStream streamB = await _redisStreamEngine.GetRedisStream("B", "testProgram");
+        RedisStream streamC = await _redisStreamEngine.GetRedisStream("C", "testProgram");
+
+
+        //       streamA.DeleteStream();
+        //       streamB.DeleteStream();
+        //       streamC.DeleteStream();
+
+
+        SampleUser   userA       = new("Bob Jones", 25, false);
+        RedisMessage messageUser = RedisMessage.CreateMessage<SampleUser>(userA);
+        messageUser.AddProperty("Type", "user");
+        messageUser.AddProperty("User", userA);
+
+        //RedisMessage message = RedisMessage.CreateMessage("This is a message");
+        //message.AddProperty("UserName", "Bob Jones");
+
+
+        streamA.SendMessage(messageUser);
+        RedisMessage bMsg = RedisMessage.CreateMessage("from b");
+        streamB.SendMessage(bMsg);
+        streamB.SendMessage(bMsg);
+        streamB.SendMessage(bMsg);
+
+        RedisMessage cMsg = RedisMessage.CreateMessage("from C");
+        streamC.SendMessage(cMsg);
+        streamC.SendMessage(cMsg);
+        streamC.SendMessage(cMsg);
+
+
+        //StreamEntry[] messages = await streamA.ReadStreamAsync();
+        StreamEntry[] messages = await streamA.ReadStreamGroupAsync();
+        foreach (StreamEntry streamEntry in messages)
+        {
+            RedisMessage redisMessage = new RedisMessage(streamEntry);
+            Console.WriteLine($"  Message: {streamEntry.Id}");
+            foreach (NameValueEntry streamEntryValue in streamEntry.Values)
+            {
+                Console.WriteLine($"    --> {streamEntryValue.Name}  :  {streamEntryValue.Value}");
+            }
+
+            streamA.AddPendingAcknowledgement(redisMessage);
+
+            //await streamA.AcknowledgeMessage(redisMessage);
+        }
+
+        // Now send any final acknowledgments.
+        await streamA.FlushPendingAcknowledgements();
+    }
 
 
     /// <summary>

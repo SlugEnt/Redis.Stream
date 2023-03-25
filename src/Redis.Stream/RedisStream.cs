@@ -15,6 +15,8 @@ public class RedisStream
     private ILogger<RedisStream>  _logger;
     private ConnectionMultiplexer _redisMultiplexer;
     private IDatabase             _db;
+    private RedisValue[]          _pendingAcknowledgements;
+    private int _pendingAcknowledgementCount;
 
 
     public RedisStream(ILogger<RedisStream> logger, IServiceProvider serviceProvider) { _logger = logger; }
@@ -26,16 +28,20 @@ public class RedisStream
     /// </summary>
     /// <param name="streamName"></param>
     /// <param name="applicationName"></param>
-    internal async Task SetStreamValues(string streamName, string applicationName, EnumRedisStreamTypes streamType, ConnectionMultiplexer multiplexer)
-    {
+    //internal async Task SetStreamValues(string streamName, string applicationName, EnumRedisStreamTypes streamType, ConnectionMultiplexer multiplexer)
+    internal async Task SetStreamConfig (StreamConfig streamConfig) {
         //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
-        StreamName        = streamName;
-        ApplicationName   = applicationName;
-        _redisMultiplexer = multiplexer;
-        _db               = _redisMultiplexer.GetDatabase();
-        StreamType        = streamType;
+        StreamName                        = streamConfig.StreamName;
+        ApplicationName                   = streamConfig.ApplicationName;
+        _redisMultiplexer                 = streamConfig.Multiplexer;
+        _db                               = _redisMultiplexer.GetDatabase();
+        StreamType                        = streamConfig.StreamType;
+        MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
+        _pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
+        _pendingAcknowledgementCount      = 0;
 
-        switch (streamType)
+
+        switch (StreamType)
         {
             case EnumRedisStreamTypes.ProducerOnly:
                 CanProduceMessages = true;
@@ -67,12 +73,15 @@ public class RedisStream
             // Create the Consumer Group if that type of Stream
             if (IsConsumerGroup)
             {
-                bool success = await TryCreateConsumerGroup();
-                await SetConsumerApplicationId();
-                await SaveConsumerId();
+                if (!await TryCreateConsumerGroup())
+                    throw new ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
+                if (!await SetConsumerApplicationId())
+                    throw new
+                        ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
+
 
                 // Need to determine the ID of this instance of the consumer group - so query redis and get the list of current consumers.
-                StreamConsumerInfo[] consumerInfo = await _db.StreamConsumerInfoAsync(streamName, applicationName);
+                StreamConsumerInfo[] consumerInfo = await _db.StreamConsumerInfoAsync(StreamName, ApplicationName);
                 if (consumerInfo.Length == 0) { }
             }
         }
@@ -108,14 +117,18 @@ public class RedisStream
 
 
     /// <summary>
-    /// Sets a unique consumer ID for this consumer
+    /// Sets a unique consumer ID for this consumer.  It then creates the consumer ID in Redis and assigns it to the application consumer group.  If it fails at any point it returns False
     /// </summary>
     /// <returns></returns>
-    protected async Task SetConsumerApplicationId()
+    protected async Task<bool> SetConsumerApplicationId()
     {
+        bool                 success      = false;
         StreamConsumerInfo[] consumerInfo = await _db.StreamConsumerInfoAsync(StreamName, ApplicationName);
         if (consumerInfo.Length == 0)
+        {
             ApplicationId = 1;
+            success       = true;
+        }
         else
         {
             Dictionary<string, string> existingIds = new();
@@ -127,12 +140,19 @@ public class RedisStream
                 if (!existingIds.ContainsKey(i.ToString()))
                 {
                     ApplicationId = i;
-                    return;
+                    success       = true;
+                    break;
                 }
             }
         }
 
-        return;
+        if (success)
+        {
+            await SaveConsumerId();
+            return true;
+        }
+
+        return false;
     }
 
 
@@ -163,6 +183,7 @@ public class RedisStream
 
         return true;
     }
+
 
 
 #region "Properties"
@@ -218,6 +239,12 @@ public class RedisStream
 
 
     /// <summary>
+    /// The maximum number of pending message acknowledgements, before an acknowledgement is automatically sent to Redis.
+    /// </summary>
+    public int MaxPendingMessageAcknowledgements { get; set; }
+
+
+    /// <summary>
     /// Number of Messages we have received.
     /// </summary>
     public long StatisticMessagesReceived { get; protected set; }
@@ -254,18 +281,16 @@ public class RedisStream
     /// </summary>
     /// <param name="numberOfMessagesToRetrieve"></param>
     /// <returns></returns>
-    public async Task<StreamEntry[]> ReadStreamAsync(int numberOfMessagesToRetrieve = 3)
+    public async Task<StreamEntry[]> ReadStreamAsync(int numberOfMessagesToRetrieve = 6)
     {
         if (!CanConsumeMessages)
             throw new ApplicationException("Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application");
 
+
         StreamPosition                    streamPosition    = new(StreamName, "0-0");
         StreamPosition[]                  streamsToRetrieve = new StreamPosition[] { streamPosition };
         StackExchange.Redis.RedisStream[] streams           = await _db.StreamReadAsync(streamsToRetrieve, numberOfMessagesToRetrieve);
-
-        //                _db.StreamRead(new StreamPosition[] { new StreamPosition(StreamName, "0-0"), new StreamPosition("B", "0-0"), new StreamPosition("C", "0-0") }, 3);
-
-        StackExchange.Redis.RedisStream stream = streams[0];
+        StackExchange.Redis.RedisStream   stream            = streams[0];
 
         Console.WriteLine($"Stream: {stream.Key} | ");
         StatisticMessagesReceived += stream.Entries.Length;
@@ -273,8 +298,68 @@ public class RedisStream
     }
 
 
-    public void CreateConsumerGroup()
+    public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6)
     {
-        if (!_db.StreamCreateConsumerGroup(StreamName, ApplicationName, 0)) { }
+        if (!CanConsumeMessages)
+            throw new
+                ApplicationException($"Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application.  StreamName: {StreamName}.");
+        if (!IsConsumerGroup)
+            throw new
+                ApplicationException($"Tried to read a stream as a group, but you have not specified Group Consumption on this stream. StreamName: {StreamName}.");
+
+        StreamEntry[] messages =
+            await _db.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, StreamPosition.NewMessages, numberOfMessagesToRetrieve);
+        return messages;
+    }
+
+
+
+    /// <summary>
+    /// Acknowledges the given message.  Immediately sends the acknowlegement to the redis server.  Bypasses the pending acknowledgement process at the expense of more roundtrip calls to the Redis Server
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    public async Task AcknowledgeMessage(RedisMessage message) { await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, message.Id); }
+
+
+
+    /// <summary>
+    /// Sends an acknowledgement of the messages to the Redis server
+    /// </summary>
+    /// <returns></returns>
+    protected async Task<long> AcknowledgePendingMessages()
+    {
+        return await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, _pendingAcknowledgements);
+    }
+
+
+
+    /// <summary>
+    /// Adds an acknowledgement to the pending list.  If maximum allowed pending messages is reached it performs an auto-flush.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    public async Task AddPendingAcknowledgement(RedisMessage message)
+    {
+        _pendingAcknowledgementCount++;
+        _pendingAcknowledgements[_pendingAcknowledgementCount] = message.Id;
+
+        if (_pendingAcknowledgementCount == MaxPendingMessageAcknowledgements)
+        {
+            await FlushPendingAcknowledgements();
+        }
+    }
+
+
+    /// <summary>
+    /// Sends acknowledgements to the Redis server and resets the pending array.
+    /// </summary>
+    /// <returns></returns>
+    public async Task FlushPendingAcknowledgements()
+    {
+        // Acknowledge the messages and then clear the list.
+        long count = await AcknowledgePendingMessages();
+        _pendingAcknowledgements     = new RedisValue[MaxPendingMessageAcknowledgements];
+        _pendingAcknowledgementCount = 0;
     }
 }
