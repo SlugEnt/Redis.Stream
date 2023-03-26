@@ -41,4 +41,10 @@ public class SLRStreamConfig
     /// This only applies if the StartingMessage is set to SpecifiedValue
     /// </summary>
     public RedisValue StartingMessageId { get; set; }
+
+
+    /// <summary>
+    /// If true, the consumer group does not nee to be acknowledged, so it is auto acknowledged as soon as read / delivered to consumer.
+    /// </summary>
+    public bool AcknowledgeOnDelivery { get; set; }
 }

@@ -12,11 +12,22 @@ namespace Redis.Stream;
 
 public class SLRStream
 {
+    public const string STREAM_POSITION_BEGINNING        = "0-0";
+    public const string STREAM_POSITION_MAX              = "+";
+    public const string STREAM_POSITION_MIN              = "-";
+    public const string STREAM_POSITION_SINCE_MESSAGE    = "(";
+    public const string STREAM_POSITION_CG_HISTORY_START = "0";
+    public const string STREAM_POSITION_CG_NEW_MESSAGES  = ">";
+
+
     private ILogger<SLRStream>    _logger;
     private ConnectionMultiplexer _redisMultiplexer;
     private IDatabase             _db;
-    private RedisValue[]          _pendingAcknowledgements;
-    private int                   _pendingAcknowledgementCount;
+
+    private List<RedisValue> _pendingAcknowledgements;
+
+    //private RedisValue[]          _pendingAcknowledgements;
+    //private int                   _pendingAcknowledgementCount;
 
 
     public SLRStream(ILogger<SLRStream> logger, IServiceProvider serviceProvider) { _logger = logger; }
@@ -39,8 +50,10 @@ public class SLRStream
         StreamType                        = streamConfig.StreamType;
         MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
         _db                               = _redisMultiplexer.GetDatabase();
-        _pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
-        _pendingAcknowledgementCount      = 0;
+        _pendingAcknowledgements          = new();
+        AutoAcknowledgeMessagesOnDelivery = streamConfig.AcknowledgeOnDelivery;
+
+        //_pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
 
 
         switch (StreamType)
@@ -77,7 +90,7 @@ public class SLRStream
         switch (streamConfig.StartingMessage)
         {
             case EnumSLRStreamStartingPoints.Beginning:
-                LastMessageId = "0-0";
+                LastMessageId = STREAM_POSITION_BEGINNING;
                 break;
             case EnumSLRStreamStartingPoints.Now:
                 if (_db.KeyExists(StreamName))
@@ -86,7 +99,7 @@ public class SLRStream
                     LastMessageId = streamInfo.LastGeneratedId;
                 }
                 else
-                    LastMessageId = "0-0";
+                    LastMessageId = STREAM_POSITION_BEGINNING;
 
                 break;
             case EnumSLRStreamStartingPoints.LastConsumedForConsumerGroup: break;
@@ -196,7 +209,7 @@ public class SLRStream
         try
         {
             // TODO Change the Zero to be a parameter?
-            await _db.StreamCreateConsumerGroupAsync(StreamName, ApplicationName, "0-0");
+            await _db.StreamCreateConsumerGroupAsync(StreamName, ApplicationName, STREAM_POSITION_BEGINNING);
         }
         catch (RedisServerException ex)
         {
@@ -261,6 +274,12 @@ public class SLRStream
 
 
     /// <summary>
+    /// If true, messages are acknowledged as soon as Redis delivers them to us.
+    /// </summary>
+    public bool AutoAcknowledgeMessagesOnDelivery { get; set; }
+
+
+    /// <summary>
     /// Application Name + Application Id
     /// </summary>
     public string ApplicationFullName
@@ -279,6 +298,16 @@ public class SLRStream
     /// The Id of the last message read by this Stream
     /// </summary>
     public RedisValue LastMessageId { get; protected set; }
+
+
+    /// <summary>
+    /// Returns the number of acknowledgements that are waiting to be sent to the Redis Server
+    /// </summary>
+    public int StatisticPendingAcknowledgements
+    {
+        get { return _pendingAcknowledgements.Count; }
+    }
+
 
     /// <summary>
     /// Number of Messages we have received.
@@ -325,8 +354,8 @@ public class SLRStream
 
 //        StreamPosition   streamPosition    = new(StreamName, "0-0");
 //        StreamPosition[] streamsToRetrieve = new StreamPosition[] { streamPosition };
-        RedisValue    lastMessageId = "(" + LastMessageId;
-        StreamEntry[] messages      = await _db.StreamRangeAsync(StreamName, lastMessageId, "+", numberOfMessagesToRetrieve);
+        RedisValue    lastMessageId = STREAM_POSITION_SINCE_MESSAGE + LastMessageId;
+        StreamEntry[] messages      = await _db.StreamRangeAsync(StreamName, lastMessageId, STREAM_POSITION_MAX, numberOfMessagesToRetrieve);
 
 
         // Store the Last Read Message ID
@@ -339,7 +368,8 @@ public class SLRStream
     }
 
 
-    public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6)
+
+    public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6, bool readPendingMessages = false)
     {
         if (!CanConsumeMessages)
             throw new
@@ -348,8 +378,10 @@ public class SLRStream
             throw new
                 ApplicationException($"Tried to read a stream as a group, but you have not specified Group Consumption on this stream. StreamName: {StreamName}.");
 
+        string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
         StreamEntry[] messages =
-            await _db.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, StreamPosition.NewMessages, numberOfMessagesToRetrieve);
+            await _db.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
+                                           AutoAcknowledgeMessagesOnDelivery);
         return messages;
     }
 
@@ -368,7 +400,11 @@ public class SLRStream
     /// Sends an acknowledgement of the messages to the Redis server
     /// </summary>
     /// <returns></returns>
-    protected async Task<long> AcknowledgePendingMessages() { return await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, _pendingAcknowledgements); }
+    protected async Task<long> AcknowledgePendingMessages(RedisValue[] acks)
+    {
+        long count = await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, acks);
+        return count;
+    }
 
 
 
@@ -377,12 +413,11 @@ public class SLRStream
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task AddPendingAcknowledgement(SLRMessage message)
+    public async Task AddPendingAcknowledgement(StreamEntry message)
     {
-        _pendingAcknowledgementCount++;
-        _pendingAcknowledgements[_pendingAcknowledgementCount] = message.Id;
+        _pendingAcknowledgements.Add(message.Id);
 
-        if (_pendingAcknowledgementCount == MaxPendingMessageAcknowledgements)
+        if (_pendingAcknowledgements.Count >= MaxPendingMessageAcknowledgements)
         {
             await FlushPendingAcknowledgements();
         }
@@ -396,8 +431,8 @@ public class SLRStream
     public async Task FlushPendingAcknowledgements()
     {
         // Acknowledge the messages and then clear the list.
-        long count = await AcknowledgePendingMessages();
-        _pendingAcknowledgements     = new RedisValue[MaxPendingMessageAcknowledgements];
-        _pendingAcknowledgementCount = 0;
+        RedisValue[] acks  = _pendingAcknowledgements.ToArray();
+        long         count = await AcknowledgePendingMessages(acks);
+        _pendingAcknowledgements.Clear();
     }
 }

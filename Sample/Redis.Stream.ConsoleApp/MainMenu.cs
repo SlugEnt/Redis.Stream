@@ -187,14 +187,14 @@ public class MainMenu
         StreamEntry[] messages = await streamA.ReadStreamGroupAsync();
         foreach (StreamEntry streamEntry in messages)
         {
-            SLRMessage redisMessage = new SLRMessage(streamEntry);
+            //SLRMessage redisMessage = new SLRMessage(streamEntry);
             Console.WriteLine($"  Message: {streamEntry.Id}");
             foreach (NameValueEntry streamEntryValue in streamEntry.Values)
             {
                 Console.WriteLine($"    --> {streamEntryValue.Name}  :  {streamEntryValue.Value}");
             }
 
-            streamA.AddPendingAcknowledgement(redisMessage);
+            streamA.AddPendingAcknowledgement(streamEntry);
 
             //await streamA.AcknowledgeMessage(redisMessage);
         }
