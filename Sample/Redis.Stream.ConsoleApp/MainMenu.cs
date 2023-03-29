@@ -194,13 +194,13 @@ public class MainMenu
                 Console.WriteLine($"    --> {streamEntryValue.Name}  :  {streamEntryValue.Value}");
             }
 
-            streamA.AddPendingAcknowledgement(streamEntry);
+            streamA.AddPendingAcknowledgementAsync(streamEntry);
 
             //await streamA.AcknowledgeMessage(redisMessage);
         }
 
         // Now send any final acknowledgments.
-        await streamA.FlushPendingAcknowledgements();
+        await streamA.FlushPendingAcknowledgementsAsync();
     }
 
 

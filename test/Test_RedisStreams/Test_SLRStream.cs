@@ -25,7 +25,7 @@ public class Test_SLRStream
         _services.AddTransient<SLRStream>();
         _serviceProvider = _services.BuildServiceProvider();
 
-        _configuration = new ConfigurationOptions { Password = "redispw", EndPoints = { new DnsEndPoint("localhost", 32768) }, ConnectTimeout = 700, };
+        _configuration = new ConfigurationOptions { Password = "redispw", EndPoints = { new DnsEndPoint("localhost", 6379) }, ConnectTimeout = 700, };
 
         // This is purely to validate we have a local Redis DB and that it is available.  If its not all tests will fail.
         SLRStreamEngine engine = _serviceProvider.GetService<SLRStreamEngine>();

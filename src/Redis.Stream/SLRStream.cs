@@ -26,10 +26,12 @@ public class SLRStream
 
     private List<RedisValue> _pendingAcknowledgements;
 
-    //private RedisValue[]          _pendingAcknowledgements;
-    //private int                   _pendingAcknowledgementCount;
 
-
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="logger"></param>
+    /// <param name="serviceProvider"></param>
     public SLRStream(ILogger<SLRStream> logger, IServiceProvider serviceProvider) { _logger = logger; }
 
 
@@ -301,6 +303,12 @@ public class SLRStream
 
 
     /// <summary>
+    /// The amount of time to allow pending messages from other consumers to be in an unacknowledged state, before attempting to claim and process them.
+    /// </summary>
+    public TimeSpan AutoClaimPendingMessagesThreshold { get; set; }
+
+
+    /// <summary>
     /// Returns the number of acknowledgements that are waiting to be sent to the Redis Server
     /// </summary>
     public int StatisticPendingAcknowledgements
@@ -342,7 +350,7 @@ public class SLRStream
 
 
     /// <summary>
-    /// Reads upto max messages from the stream
+    /// Reads up to max messages from the stream
     /// </summary>
     /// <param name="numberOfMessagesToRetrieve"></param>
     /// <returns></returns>
@@ -351,9 +359,6 @@ public class SLRStream
         if (!CanConsumeMessages)
             throw new ApplicationException("Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application");
 
-
-//        StreamPosition   streamPosition    = new(StreamName, "0-0");
-//        StreamPosition[] streamsToRetrieve = new StreamPosition[] { streamPosition };
         RedisValue    lastMessageId = STREAM_POSITION_SINCE_MESSAGE + LastMessageId;
         StreamEntry[] messages      = await _db.StreamRangeAsync(StreamName, lastMessageId, STREAM_POSITION_MAX, numberOfMessagesToRetrieve);
 
@@ -369,6 +374,13 @@ public class SLRStream
 
 
 
+    /// <summary>
+    /// Reads messages for a consumer group.  
+    /// </summary>
+    /// <param name="numberOfMessagesToRetrieve">Number of messages to retrieve</param>
+    /// <param name="readPendingMessages">If true, it should read from the pending "queue" instead of the new queue.  Pending are messages already read once by this consumer, but never acknowledged.</param>
+    /// <returns></returns>
+    /// <exception cref="ApplicationException"></exception>
     public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6, bool readPendingMessages = false)
     {
         if (!CanConsumeMessages)
@@ -382,6 +394,7 @@ public class SLRStream
         StreamEntry[] messages =
             await _db.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
                                            AutoAcknowledgeMessagesOnDelivery);
+        StatisticMessagesReceived += messages.Length;
         return messages;
     }
 
@@ -413,13 +426,13 @@ public class SLRStream
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task AddPendingAcknowledgement(StreamEntry message)
+    public async Task AddPendingAcknowledgementAsync(StreamEntry message)
     {
         _pendingAcknowledgements.Add(message.Id);
 
         if (_pendingAcknowledgements.Count >= MaxPendingMessageAcknowledgements)
         {
-            await FlushPendingAcknowledgements();
+            await FlushPendingAcknowledgementsAsync();
         }
     }
 
@@ -428,11 +441,126 @@ public class SLRStream
     /// Sends acknowledgements to the Redis server and resets the pending array.
     /// </summary>
     /// <returns></returns>
-    public async Task FlushPendingAcknowledgements()
+    public async Task FlushPendingAcknowledgementsAsync()
     {
         // Acknowledge the messages and then clear the list.
         RedisValue[] acks  = _pendingAcknowledgements.ToArray();
         long         count = await AcknowledgePendingMessages(acks);
         _pendingAcknowledgements.Clear();
+    }
+
+
+
+    /// <summary>
+    /// Claims and Retrieves messages currently claimed by other consumers in the group if they have remained unacknowledged past the AutoClaimPendingMessagesThreshold.
+    /// <para>NOTE:  You must acknowledge these messages manually.  There is NO AUTO ACKNOWLEDGEMENT.</para>
+    /// </summary>
+    /// <param name="numberOfMessagesToClaim">Maximum number of messages to claim from the dead consumer</param>
+    /// <param name="startingMessageId">Message ID to start with in the pending list.</param>
+    /// <returns></returns>
+    /// <exception cref="ApplicationException"></exception>
+    public async Task<StreamEntry[]> ClaimPendingMessagesAsync(int numberOfMessagesToClaim, RedisValue startingMessageId)
+    {
+        if (!CanConsumeMessages)
+            throw new
+                ApplicationException($"Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application.  StreamName: {StreamName}.");
+        if (!IsConsumerGroup)
+            throw new
+                ApplicationException($"Tried to read a stream as a group, but you have not specified Group Consumption on this stream. StreamName: {StreamName}.");
+
+
+        //string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
+        StreamAutoClaimResult claimedMessages = await _db.StreamAutoClaimAsync(StreamName, ApplicationName, ApplicationId,
+                                                                               AutoClaimPendingMessagesThreshold.Milliseconds, "0-0", numberOfMessagesToClaim);
+        return claimedMessages.ClaimedEntries;
+    }
+
+
+
+    /// <summary>
+    /// Retrieves pending message information
+    /// </summary>
+    /// <returns></returns>
+    public async Task<StreamPendingMessageInfo[]> GetPendingMessageInfo()
+    {
+        return await _db.StreamPendingMessagesAsync(StreamName, ApplicationName, 10, ApplicationId);
+    }
+
+
+
+    /// <summary>
+    /// Returns the total number of messages pending for all the consumers of the Application group.
+    /// </summary>
+    /// <returns></returns>
+    public async Task<long> GetApplicationPendingMessageCount()
+    {
+        StreamGroupInfo[] groups          = await GetApplicationInfo();
+        long              pendingMessages = 0;
+        foreach (StreamGroupInfo group in groups)
+        {
+            if (group.Name == ApplicationName)
+                pendingMessages += group.PendingMessageCount;
+        }
+
+        return pendingMessages;
+    }
+
+
+
+    /// <summary>
+    /// Retries info about the stream
+    /// </summary>
+    /// <returns></returns>
+    public async Task<StreamInfo> GetStreamInfo()
+    {
+        StreamInfo info = await _db.StreamInfoAsync(StreamName);
+        return info;
+    }
+
+
+    /// <summary>
+    /// Gets information about the groups in the stream
+    /// </summary>
+    /// <returns></returns>
+    public async Task<StreamGroupInfo[]> GetApplicationInfo() { return await _db.StreamGroupInfoAsync(StreamName); }
+
+
+
+    /// <summary>
+    /// Returns information about the consumers in group.
+    /// </summary>
+    /// <returns></returns>
+    public async Task<StreamConsumerInfo[]> GetConsumerInfo() { return await _db.StreamConsumerInfoAsync(StreamName, ApplicationName); }
+
+
+    /// <summary>
+    /// Returns vital statistics and information about the stream
+    /// </summary>
+    /// <returns></returns>
+    public async Task<SLRStreamVitals> GetStreamVitals()
+    {
+        SLRStreamVitals streamVitals = await SLRStreamVitals.GetStreamVitals(this);
+        return streamVitals;
+    }
+
+
+
+    /// <summary>
+    /// Removes aproximately all messages with an id before the passed in value.  Redis will determine up to what ID less than requested ID will be deleted for optimization and speed reasons
+    /// <para>Thus, there may still exist some messages older than the messageIDToRemoveBefore value still present in DB</para>
+    /// </summary>
+    /// <param name="messageIDToRemoveBefore"></param>
+    /// <returns></returns>
+    public async Task<int> RemoveFullyProcessedEntries(RedisValue messageIDToRemoveBefore)
+    {
+        List<string> xGroupArgs = new();
+        xGroupArgs.Add(StreamName);
+        xGroupArgs.Add("MINID");
+        xGroupArgs.Add("~");
+        xGroupArgs.Add(messageIDToRemoveBefore);
+        string      cmd    = $"XTRIM";
+        RedisResult result = await _db.ExecuteAsync(cmd, xGroupArgs.ToArray());
+
+        return (int)result;
     }
 }

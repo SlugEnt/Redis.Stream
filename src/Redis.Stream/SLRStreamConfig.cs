@@ -47,4 +47,10 @@ public class SLRStreamConfig
     /// If true, the consumer group does not nee to be acknowledged, so it is auto acknowledged as soon as read / delivered to consumer.
     /// </summary>
     public bool AcknowledgeOnDelivery { get; set; }
+
+
+    /// <summary>
+    /// The threshold for consuming a message from another consumer that has not acknowledged the message yet
+    /// </summary>
+    public TimeSpan ClaimMessagesOlderThan { get; set; } = TimeSpan.FromMinutes(1);
 }
