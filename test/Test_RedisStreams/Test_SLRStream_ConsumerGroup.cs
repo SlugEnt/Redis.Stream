@@ -1,42 +1,18 @@
 ﻿using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
-using Redis.Stream;
+using SlugEnt.SLRStreamProcessing;
 using SlugEnt;
 using StackExchange.Redis;
+using StackExchange.Redis.Extensions.Core.Configuration;
 
 namespace Test_RedisStreams;
 
 [TestFixture]
-public class Test_SLRStream_ConsumerGroup
+public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 {
-    private SLRStreamEngine      _slrStreamEngine;
-    private IServiceCollection   _services;
-    private ServiceProvider      _serviceProvider;
-    private ConfigurationOptions _configuration;
-    private UniqueKeys           _uniqueKeys;
-
-
     [OneTimeSetUp]
-    public void OneTimeSetup()
-    {
-        _services = new ServiceCollection().AddLogging();
-        _services.AddTransient<SLRStreamEngine>();
-        _services.AddTransient<SLRStream>();
-        _serviceProvider = _services.BuildServiceProvider();
-
-        _configuration = new ConfigurationOptions { Password = "redispw", EndPoints = { new DnsEndPoint("localhost", 6379) }, ConnectTimeout = 700, };
-
-        // This is purely to validate we have a local Redis DB and that it is available.  If its not all tests will fail.
-        SLRStreamEngine engine = _serviceProvider.GetService<SLRStreamEngine>();
-        engine.RedisConfigurationOptions = _configuration;
-        Assert.IsTrue(engine.Initialize(), "A10:  Engine is not connected to Redis DB.  For Testing purposes ensure you have a local Redis DB running.");
-
-        // Store engine so other test methods can use
-        _slrStreamEngine = engine;
-
-        _uniqueKeys = new();
-    }
+    public void OneTimeSetup() { Initialize(); }
 
 
 
@@ -760,6 +736,7 @@ public class Test_SLRStream_ConsumerGroup
 
 
     [Test]
+    [Repeat(20)]
     public async Task RemoveMessages()
     {
         SLRStream stream = null;

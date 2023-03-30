@@ -10,7 +10,7 @@ using System.Net;
 using System.Reflection;
 
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class Program
 {

@@ -5,10 +5,10 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using RabbitMQ.Stream.Client;
-using Redis.Stream.Sample;
+using SlugEnt.SLRStreamProcessing.Sample;
 using SlugEnt.MQStreamProcessor;
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public static class HelperFunctions
 {

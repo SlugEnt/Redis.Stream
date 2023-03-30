@@ -1,6 +1,6 @@
 ﻿using StackExchange.Redis;
 
-namespace Redis.Stream;
+namespace SlugEnt.SLRStreamProcessing;
 
 /// <summary>
 /// Provides the configuration for a stream

@@ -1,7 +1,7 @@
 ﻿using Spectre.Console;
 
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class DisplayStats
 {

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class Stats
 {

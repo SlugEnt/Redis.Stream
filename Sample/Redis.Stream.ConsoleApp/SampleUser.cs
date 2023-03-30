@@ -1,4 +1,4 @@
-﻿namespace Redis.Stream.Sample;
+﻿namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class SampleUser
 {

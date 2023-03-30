@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
+using StackExchange.Redis.Extensions.Core.Configuration;
+using StackExchange.Redis.Extensions.Core.Implementations;
 
-namespace Redis.Stream;
+namespace SlugEnt.SLRStreamProcessing;
 
 public class SLRStreamEngine
 {
@@ -29,11 +31,14 @@ public class SLRStreamEngine
 
 
 
+    //public ConfigurationOptions RedisConfigurationOptions { get; set; }
+
     /// <summary>
     /// The Configuration options for connecting to Redis Servers
     /// </summary>
-    public ConfigurationOptions RedisConfigurationOptions { get; set; }
+    public RedisConfiguration RedisConfiguration { get; set; }
 
+    protected RedisConnectionPoolManager RedisConnectionPoolManager { get; set; }
 
 
     /// <summary>
@@ -41,20 +46,24 @@ public class SLRStreamEngine
     /// </summary>
     /// <param name="redisConfigurationOptions"></param>
     /// <returns>RedisConnectionException if it cannot connect.</returns>
-    public bool Initialize(ConfigurationOptions redisConfigurationOptions = null)
+    public bool Initialize(RedisConfiguration redisConfiguration = null)
     {
-        if (redisConfigurationOptions == null)
+        if (redisConfiguration == null)
         {
-            if (RedisConfigurationOptions == null)
-                throw new ApplicationException("You must set ConfigurationOptions on initialization of the engine.");
+            if (RedisConfiguration == null)
+                throw new ApplicationException("You must set RedisConfiguration on initialization of the engine.");
         }
         else
-            RedisConfigurationOptions = redisConfigurationOptions;
+            RedisConfiguration = redisConfiguration;
 
         IsInitialized = true;
 
-        _multiplexer = ConnectionMultiplexer.Connect(RedisConfigurationOptions);
-        IsConnected  = _multiplexer.IsConnected;
+        ILogger<RedisConnectionPoolManager> redisConnLogger = _loggerFactory.CreateLogger<RedisConnectionPoolManager>();
+        RedisConnectionPoolManager = new(RedisConfiguration, redisConnLogger);
+        IsConnected                = RedisConnectionPoolManager.GetConnection().IsConnected;
+
+//        _multiplexer = ConnectionMultiplexer.Connect(RedisConfigurationOptions);
+        //IsConnected  = _multiplexer.IsConnected;
         return IsConnected;
     }
 
@@ -89,23 +98,20 @@ public class SLRStreamEngine
     /// <param name="redisStreamType">The type of stream.  Defaults to a simple producer/consumer</param>
     /// <returns></returns>
     /// 
-
-//    public async Task<SLRStream> GetSLRStreamAsync(string streamName, string applicationName,
-//                                                EnumSLRStreamTypes redisStreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer)
     public async Task<SLRStream> GetSLRStreamAsync(SLRStreamConfig slrStreamConfig)
     {
         if (!IsInitialized)
             throw new ApplicationException("The RedisStreamEngine has not been initialized yet.");
-        if (RedisConfigurationOptions == null)
+        if (RedisConfiguration == null)
             throw new
-                ApplicationException("The RedisStreamEngine does not have a valid ConfigurationOptions value.  You must set configuration options before starting a stream.");
+                ApplicationException("The RedisStreamEngine does not have a valid RedisConfiguration value.  You must set configuration before starting a stream.");
 
         ILogger<SLRStream> logStream = _loggerFactory.CreateLogger<SLRStream>();
         SLRStream          stream    = _serviceProvider.GetService<SLRStream>();
         if (stream == null)
             throw new ApplicationException("Unable to create a SLRStream object from the ServiceProvider.");
 
-        await stream.SetStreamConfig(slrStreamConfig, _multiplexer);
+        await stream.SetStreamConfig(slrStreamConfig, RedisConnectionPoolManager, RedisConfiguration);
 
         //await stream.SetStreamValues(streamName, applicationName, redisStreamType, _multiplexer);
         return stream;

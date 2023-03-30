@@ -1,4 +1,4 @@
-﻿namespace Redis.Stream;
+﻿namespace SlugEnt.SLRStreamProcessing;
 
 /// <summary>
 /// Defines the possible starting points in the stream for an application when it 1st starts

@@ -1,7 +1,7 @@
 ﻿using System.Text;
 using StackExchange.Redis;
 
-namespace Redis.Stream;
+namespace SlugEnt.SLRStreamProcessing;
 
 public static class ExtensionMethod_StackExchangeRedis
 {

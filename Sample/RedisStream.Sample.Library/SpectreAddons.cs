@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public static class SpectreAddons
 {

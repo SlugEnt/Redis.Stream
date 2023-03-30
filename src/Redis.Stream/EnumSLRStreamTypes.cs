@@ -1,4 +1,4 @@
-﻿namespace Redis.Stream;
+﻿namespace SlugEnt.SLRStreamProcessing;
 
 public enum EnumSLRStreamTypes
 {

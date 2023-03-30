@@ -8,9 +8,10 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using StackExchange.Redis.Extensions.Core.Configuration;
 
 
-namespace Redis.Stream.Sample;
+namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class MainMenu
 {
@@ -34,11 +35,11 @@ public class MainMenu
             throw new ApplicationException("Unable to build a RedisStreamEngine");
 
 
-        _redisStreamEngine.RedisConfigurationOptions = new ConfigurationOptions
+        RedisConfiguration _redisConfiguration = new RedisConfiguration
         {
-            Password = "redis23", EndPoints = { new DnsEndPoint("podmanc.slug.local", 6379) },
+            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700,
         };
-        _redisStreamEngine.Initialize();
+        _redisStreamEngine.RedisConfiguration = _redisConfiguration;
 
 
         /*

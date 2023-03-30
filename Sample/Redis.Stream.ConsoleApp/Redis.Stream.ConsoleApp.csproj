@@ -21,7 +21,7 @@
 
 
 	<ItemGroup>
-    <ProjectReference Include="..\..\src\Redis.Stream\Redis.Stream.csproj" />
+    <ProjectReference Include="..\..\src\Redis.Stream\SLRStreamProcessing.csproj" />
   </ItemGroup>
 
 </Project>

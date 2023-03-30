@@ -1,14 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
+using StackExchange.Redis.Extensions.Core;
+using StackExchange.Redis.Extensions.Core.Abstractions;
+using StackExchange.Redis.Extensions.Core.Configuration;
+using StackExchange.Redis.Extensions.Core.Implementations;
+using StackExchange.Redis.Extensions.System.Text.Json;
 
-namespace Redis.Stream;
+namespace SlugEnt.SLRStreamProcessing;
 
 public class SLRStream
 {
@@ -20,9 +18,14 @@ public class SLRStream
     public const string STREAM_POSITION_CG_NEW_MESSAGES  = ">";
 
 
-    private ILogger<SLRStream>    _logger;
-    private ConnectionMultiplexer _redisMultiplexer;
-    private IDatabase             _db;
+    private ILogger<SLRStream> _logger;
+
+//    private   ConnectionMultiplexer      _redisMultiplexer;
+    //private   IDatabase                  _redisClient.Db0.Database;
+    protected RedisConnectionPoolManager _redisConnectionPoolManager;
+    protected RedisClient                _redisClient;
+
+
 
     private List<RedisValue> _pendingAcknowledgements;
 
@@ -43,17 +46,27 @@ public class SLRStream
     /// <param name="multiplexer">If not null, it overrides any multiplexer set in the config</param>
 
     //internal async Task SetStreamValues(string streamName, string applicationName, EnumRedisStreamTypes streamType, ConnectionMultiplexer multiplexer)
-    internal async Task SetStreamConfig(SLRStreamConfig streamConfig, ConnectionMultiplexer multiplexer = null)
+    internal async Task SetStreamConfig(SLRStreamConfig streamConfig, RedisConnectionPoolManager redisConnectionPoolManager,
+                                        RedisConfiguration redisConfiguration)
     {
         //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
-        StreamName                        = streamConfig.StreamName;
-        ApplicationName                   = streamConfig.ApplicationName;
-        _redisMultiplexer                 = multiplexer == null ? streamConfig.Multiplexer : multiplexer;
+        StreamName      = streamConfig.StreamName;
+        ApplicationName = streamConfig.ApplicationName;
+
+        //_redisMultiplexer                 = multiplexer == null ? streamConfig.Multiplexer : multiplexer;
         StreamType                        = streamConfig.StreamType;
         MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
-        _db                               = _redisMultiplexer.GetDatabase();
+
         _pendingAcknowledgements          = new();
         AutoAcknowledgeMessagesOnDelivery = streamConfig.AcknowledgeOnDelivery;
+
+
+        // Configure Redis Connection
+        // TODO RedisconnectionPoolManager can take an ILogger.  Probably need to create one...
+        _redisConnectionPoolManager = redisConnectionPoolManager;
+        SystemTextJsonSerializer serializer = new();
+        _redisClient = new RedisClient(_redisConnectionPoolManager, serializer, redisConfiguration);
+
 
         //_pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
 
@@ -95,9 +108,9 @@ public class SLRStream
                 LastMessageId = STREAM_POSITION_BEGINNING;
                 break;
             case EnumSLRStreamStartingPoints.Now:
-                if (_db.KeyExists(StreamName))
+                if (_redisClient.Db0.Database.KeyExists(StreamName))
                 {
-                    StreamInfo streamInfo = _db.StreamInfo(StreamName);
+                    StreamInfo streamInfo = _redisClient.Db0.Database.StreamInfo(StreamName);
                     LastMessageId = streamInfo.LastGeneratedId;
                 }
                 else
@@ -127,7 +140,7 @@ public class SLRStream
 
 
                 // Need to determine the ID of this instance of the consumer group - so query redis and get the list of current consumers.
-                StreamConsumerInfo[] consumerInfo = await _db.StreamConsumerInfoAsync(StreamName, ApplicationName);
+                StreamConsumerInfo[] consumerInfo = await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName);
                 if (consumerInfo.Length == 0) { }
             }
         }
@@ -155,7 +168,7 @@ public class SLRStream
         xGroupArgs.Add(ApplicationName);
         xGroupArgs.Add(ApplicationId.ToString());
         string      cmd    = $"XGROUP";
-        RedisResult result = await _db.ExecuteAsync(cmd, xGroupArgs.ToArray());
+        RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
         if ((int)result != 1)
             throw new
                 ApplicationException($"Unable to create consumer group:  Stream: {StreamName}, ConsumerGroup: {ApplicationName},  ConsumerName: {ApplicationId} ");
@@ -169,7 +182,7 @@ public class SLRStream
     protected async Task<bool> SetConsumerApplicationId()
     {
         bool                 success      = false;
-        StreamConsumerInfo[] consumerInfo = await _db.StreamConsumerInfoAsync(StreamName, ApplicationName);
+        StreamConsumerInfo[] consumerInfo = await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName);
         if (consumerInfo.Length == 0)
         {
             ApplicationId = 1;
@@ -211,7 +224,7 @@ public class SLRStream
         try
         {
             // TODO Change the Zero to be a parameter?
-            await _db.StreamCreateConsumerGroupAsync(StreamName, ApplicationName, STREAM_POSITION_BEGINNING);
+            await _redisClient.Db0.Database.StreamCreateConsumerGroupAsync(StreamName, ApplicationName, STREAM_POSITION_BEGINNING);
         }
         catch (RedisServerException ex)
         {
@@ -330,7 +343,7 @@ public class SLRStream
     /// <summary>
     /// Permanently removes the stream and all message. Use Caution!
     /// </summary>
-    public void DeleteStream() { _db.KeyDelete(StreamName); }
+    public void DeleteStream() { _redisClient.Db0.Database.KeyDelete(StreamName); }
 
 
     /// <summary>
@@ -344,7 +357,7 @@ public class SLRStream
                 ApplicationException("Attempted to send a message to a stream that you have NOT specified as a stream you can produce messages for with this application");
 
         NameValueEntry[] values = message.GetNameValueEntries();
-        _db.StreamAddAsync(StreamName, values);
+        _redisClient.Db0.Database.StreamAddAsync(StreamName, values);
     }
 
 
@@ -360,7 +373,7 @@ public class SLRStream
             throw new ApplicationException("Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application");
 
         RedisValue    lastMessageId = STREAM_POSITION_SINCE_MESSAGE + LastMessageId;
-        StreamEntry[] messages      = await _db.StreamRangeAsync(StreamName, lastMessageId, STREAM_POSITION_MAX, numberOfMessagesToRetrieve);
+        StreamEntry[] messages = await _redisClient.Db0.Database.StreamRangeAsync(StreamName, lastMessageId, STREAM_POSITION_MAX, numberOfMessagesToRetrieve);
 
 
         // Store the Last Read Message ID
@@ -392,8 +405,8 @@ public class SLRStream
 
         string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
         StreamEntry[] messages =
-            await _db.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
-                                           AutoAcknowledgeMessagesOnDelivery);
+            await _redisClient.Db0.Database.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
+                                                                 AutoAcknowledgeMessagesOnDelivery);
         StatisticMessagesReceived += messages.Length;
         return messages;
     }
@@ -405,7 +418,10 @@ public class SLRStream
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task AcknowledgeMessage(SLRMessage message) { await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, message.Id); }
+    public async Task AcknowledgeMessage(SLRMessage message)
+    {
+        await _redisClient.Db0.Database.StreamAcknowledgeAsync(StreamName, ApplicationName, message.Id);
+    }
 
 
 
@@ -415,7 +431,7 @@ public class SLRStream
     /// <returns></returns>
     protected async Task<long> AcknowledgePendingMessages(RedisValue[] acks)
     {
-        long count = await _db.StreamAcknowledgeAsync(StreamName, ApplicationName, acks);
+        long count = await _redisClient.Db0.Database.StreamAcknowledgeAsync(StreamName, ApplicationName, acks);
         return count;
     }
 
@@ -470,8 +486,9 @@ public class SLRStream
 
 
         //string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
-        StreamAutoClaimResult claimedMessages = await _db.StreamAutoClaimAsync(StreamName, ApplicationName, ApplicationId,
-                                                                               AutoClaimPendingMessagesThreshold.Milliseconds, "0-0", numberOfMessagesToClaim);
+        StreamAutoClaimResult claimedMessages = await _redisClient.Db0.Database.StreamAutoClaimAsync(StreamName, ApplicationName, ApplicationId,
+                                                                                                     AutoClaimPendingMessagesThreshold.Milliseconds, "0-0",
+                                                                                                     numberOfMessagesToClaim);
         return claimedMessages.ClaimedEntries;
     }
 
@@ -483,7 +500,7 @@ public class SLRStream
     /// <returns></returns>
     public async Task<StreamPendingMessageInfo[]> GetPendingMessageInfo()
     {
-        return await _db.StreamPendingMessagesAsync(StreamName, ApplicationName, 10, ApplicationId);
+        return await _redisClient.Db0.Database.StreamPendingMessagesAsync(StreamName, ApplicationName, 10, ApplicationId);
     }
 
 
@@ -513,7 +530,7 @@ public class SLRStream
     /// <returns></returns>
     public async Task<StreamInfo> GetStreamInfo()
     {
-        StreamInfo info = await _db.StreamInfoAsync(StreamName);
+        StreamInfo info = await _redisClient.Db0.Database.StreamInfoAsync(StreamName);
         return info;
     }
 
@@ -522,7 +539,7 @@ public class SLRStream
     /// Gets information about the groups in the stream
     /// </summary>
     /// <returns></returns>
-    public async Task<StreamGroupInfo[]> GetApplicationInfo() { return await _db.StreamGroupInfoAsync(StreamName); }
+    public async Task<StreamGroupInfo[]> GetApplicationInfo() { return await _redisClient.Db0.Database.StreamGroupInfoAsync(StreamName); }
 
 
 
@@ -530,7 +547,7 @@ public class SLRStream
     /// Returns information about the consumers in group.
     /// </summary>
     /// <returns></returns>
-    public async Task<StreamConsumerInfo[]> GetConsumerInfo() { return await _db.StreamConsumerInfoAsync(StreamName, ApplicationName); }
+    public async Task<StreamConsumerInfo[]> GetConsumerInfo() { return await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName); }
 
 
     /// <summary>
@@ -559,7 +576,7 @@ public class SLRStream
         xGroupArgs.Add("~");
         xGroupArgs.Add(messageIDToRemoveBefore);
         string      cmd    = $"XTRIM";
-        RedisResult result = await _db.ExecuteAsync(cmd, xGroupArgs.ToArray());
+        RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
 
         return (int)result;
     }

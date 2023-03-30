@@ -1,17 +1,18 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
-using Redis.Stream;
+using SlugEnt.SLRStreamProcessing;
 using StackExchange.Redis;
+using StackExchange.Redis.Extensions.Core.Configuration;
 
 namespace Test_RedisStreams;
 
 [TestFixture]
 public class Tests
 {
-    private SLRStreamEngine      _slrStreamEngine;
-    private IServiceCollection   _services;
-    private ServiceProvider      _serviceProvider;
-    private ConfigurationOptions _configuration;
+    private SLRStreamEngine    _slrStreamEngine;
+    private IServiceCollection _services;
+    private ServiceProvider    _serviceProvider;
+    private RedisConfiguration _configuration;
 
 
     [OneTimeSetUp]
@@ -22,11 +23,15 @@ public class Tests
         _services.AddTransient<SLRStream>();
         _serviceProvider = _services.BuildServiceProvider();
 
-        _configuration = new ConfigurationOptions { Password = "redispw", EndPoints = { new DnsEndPoint("localhost", 6379) }, ConnectTimeout = 700, };
+
+        _configuration = new RedisConfiguration
+        {
+            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700,
+        };
 
         // This is purely to validate we have a local Redis DB and that it is available.  If its not all tests will fail.
         SLRStreamEngine engine = _serviceProvider.GetService<SLRStreamEngine>();
-        engine.RedisConfigurationOptions = _configuration;
+        engine.RedisConfiguration = _configuration;
         Assert.IsTrue(engine.Initialize(), "A10:  Engine is not connected to Redis DB.  For Testing purposes ensure you have a local Redis DB running.");
 
         // Store engine so other test methods can use
@@ -50,7 +55,7 @@ public class Tests
     public void InitializeEngineWithConfigPropertySet_Success()
     {
         SLRStreamEngine engine = _serviceProvider.GetService<SLRStreamEngine>();
-        engine.RedisConfigurationOptions = _configuration;
+        engine.RedisConfiguration = _configuration;
         Assert.IsTrue(engine.Initialize(), "A10:");
     }
 

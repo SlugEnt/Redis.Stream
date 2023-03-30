@@ -1,4 +1,4 @@
-﻿namespace Redis.Stream;
+﻿namespace SlugEnt.SLRStreamProcessing;
 
 /// <summary>
 /// The type of encoding of the application's message body.
