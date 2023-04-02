@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using ByteSizeLib;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core;
 using StackExchange.Redis.Extensions.Core.Abstractions;
@@ -333,7 +334,14 @@ public class SLRStream
     /// <summary>
     /// Number of Messages we have received.
     /// </summary>
-    public long StatisticMessagesReceived { get; protected set; }
+    public ulong StatisticMessagesReceived { get; protected set; }
+
+
+    /// <summary>
+    /// Number of messages that have been sent.
+    /// </summary>
+    public ulong StatisticMessagesSent { get; protected set; }
+
 
     public long StatisticMessagesConsumed { get; protected set; }
 
@@ -357,7 +365,8 @@ public class SLRStream
                 ApplicationException("Attempted to send a message to a stream that you have NOT specified as a stream you can produce messages for with this application");
 
         NameValueEntry[] values = message.GetNameValueEntries();
-        _redisClient.Db0.Database.StreamAddAsync(StreamName, values);
+        await _redisClient.Db0.Database.StreamAddAsync(StreamName, values);
+        StatisticMessagesSent++;
     }
 
 
@@ -381,7 +390,7 @@ public class SLRStream
             LastMessageId = messages[messages.Length - 1].Id;
 
 
-        StatisticMessagesReceived += messages.Length;
+        StatisticMessagesReceived += (ulong)messages.Length;
         return messages;
     }
 
@@ -407,7 +416,7 @@ public class SLRStream
         StreamEntry[] messages =
             await _redisClient.Db0.Database.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
                                                                  AutoAcknowledgeMessagesOnDelivery);
-        StatisticMessagesReceived += messages.Length;
+        StatisticMessagesReceived += (ulong)messages.Length;
         return messages;
     }
 
@@ -579,5 +588,24 @@ public class SLRStream
         RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
 
         return (int)result;
+    }
+
+
+
+    /// <summary>
+    /// Returns the size of the current stream.
+    /// </summary>
+    /// <returns>ByteSize value</returns>
+    public async Task<ByteSize> GetSize()
+    {
+        //TODO
+        List<string> xGroupArgs = new();
+        xGroupArgs.Add("USAGE");
+        xGroupArgs.Add(StreamName);
+        string      cmd    = $"MEMORY";
+        RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
+
+        ByteSize x = ByteSize.FromBytes((double)result);
+        return x;
     }
 }

@@ -1,18 +1,24 @@
-﻿using System.Text;
+﻿using System.Formats.Tar;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using StackExchange.Redis;
 
 namespace SlugEnt.SLRStreamProcessing;
 
 public class SLRMessage
 {
-    private Dictionary<RedisValue, RedisValue> _properties;
+    private static readonly string MSG_TYPE_TEXT   = ".DT";
+    private static readonly string MSG_TYPE_OBJECT = ".DO";
+
+    private Dictionary<RedisValue, RedisValue> _properties = new();
 
 
 
     /// <summary>
-    /// Constructor when creating message to send to Redis Stream
+    /// Constructor when creating message to send to Redis Stream.  This will be considered a Generic message as it contains no default text or object based content
     /// </summary>
-    public SLRMessage() { _properties = new(); }
+    public SLRMessage() { }
 
 
     /// <summary>
@@ -23,6 +29,11 @@ public class SLRMessage
     {
         Id             = streamEntry.Id;
         RawStreamEntry = streamEntry;
+
+        for (int i = 0; i < streamEntry.Values.Length; i++)
+        {
+            _properties.Add(streamEntry.Values[i].Name, streamEntry.Values[i].Value);
+        }
     }
 
 
@@ -31,7 +42,6 @@ public class SLRMessage
     /// </summary>
     public RedisValue Id { get; protected set; }
 
-    public string CorrelationId { get; set; }
 
     internal string Data { get; set; } = "";
 
@@ -45,58 +55,92 @@ public class SLRMessage
     }
 
 
-    /// <summary>
-    /// Creates a message from the given text, identifying the encoding type of the text
-    /// </summary>
-    /// <param name="text"></param>
-    /// <returns></returns>
-    public static SLRMessage CreateMessage(string text, EnumEncodingType encodingType = EnumEncodingType.Text)
-    {
-        SLRMessage message = new SLRMessage();
-        message.AddProperty("enc", encodingType);
-        message.Data = text;
-        return message;
-    }
-
 
     /// <summary>
-    /// Creates a message from the given text.
+    /// Creates a message from the given text.  The text is stored in the Data property.
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
     public static SLRMessage CreateMessage(string text)
     {
         SLRMessage message = new SLRMessage();
-        message.AddProperty("enc", EnumEncodingType.Text);
-        message.Data = text;
+        message.AddProperty(MSG_TYPE_TEXT, text);
         return message;
     }
 
 
     /// <summary>
-    /// Creates a message with the given object
+    /// Creates a message with the given object.  The object data is serialized into the data property.
     /// </summary>
     /// <typeparam name="T">Any Nullable object type</typeparam>
     /// <param name="value">An instance of T</param>
     /// <returns></returns>
     public static SLRMessage CreateMessage<T>(T value)
     {
+        SLRMessage message = new SLRMessage();
         string     json    = System.Text.Json.JsonSerializer.Serialize(value);
-        SLRMessage message = CreateMessage(json, EnumEncodingType.ApplicationJson);
+        message.AddProperty(MSG_TYPE_OBJECT, json);
         return message;
     }
 
 
-    public T GetObject<T>()
+
+    /// <summary>
+    /// Will return the primary Data object that was encoded into the message if there was one.  Otherwise returns default for T
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <returns></returns>
+    public T GetMessageObject<T>()
     {
-        T value = System.Text.Json.JsonSerializer.Deserialize<T>(Data);
+        if (!_properties.TryGetValue(MSG_TYPE_OBJECT, out RedisValue dataObject))
+            return default(T);
+
+        T value = System.Text.Json.JsonSerializer.Deserialize<T>(dataObject);
         return value;
     }
 
 
 
     /// <summary>
-    /// Adds the given property to the Application Property Dictionary
+    /// Retrieves the message text if it was a text encoded message.
+    /// </summary>
+    /// <returns></returns>
+    public string GetMessageText()
+    {
+        if (!_properties.TryGetValue(MSG_TYPE_TEXT, out RedisValue dataObject))
+            return string.Empty;
+
+        return dataObject.ToString();
+    }
+
+
+
+    /// <summary>
+    /// Returns true if the message contains a text message. False if it is an object based message
+    /// </summary>
+    /// <returns></returns>
+    public bool IsTextualMessage => _properties.ContainsKey(MSG_TYPE_TEXT);
+
+
+
+    /// <summary>
+    /// Returns true if the message contains an object encoded into it.  False if text based message
+    /// </summary>
+    /// <returns></returns>
+    public bool IsObjectEncodedMessage => _properties.ContainsKey(MSG_TYPE_OBJECT);
+
+
+
+    /// <summary>
+    /// If the message is neither Text or Object Based, then it is a Generic message
+    /// </summary>
+    /// <returns></returns>
+    public bool IsGenericMessage => !IsTextualMessage && !IsObjectEncodedMessage;
+
+
+
+    /// <summary>
+    /// Adds the given RedisValue type (int, string, bool, etc) property to the Application Property Dictionary
     /// </summary>
     /// <param name="message"></param>
     /// <param name="propertyName">Name of the property</param>
@@ -104,14 +148,15 @@ public class SLRMessage
     public void AddProperty(string propertyName, RedisValue propertyValue) { _properties.Add(propertyName, propertyValue); }
 
 
+
     /// <summary>
-    /// Adds the given property to the Application Property Dictionary
+    /// Adds the given object as a property to the Application Property Dictionary
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <param name="message"></param>
     /// <param name="propertyName">Name of the property</param>
     /// <param name="value">Value Object</param>
-    public void AddProperty<T>(string propertyName, T value)
+    public void AddPropertyObject<T>(string propertyName, T value) where T : class
     {
         string json = System.Text.Json.JsonSerializer.Serialize(value);
         _properties.Add(propertyName, json);
@@ -121,16 +166,13 @@ public class SLRMessage
 
     public NameValueEntry[] GetNameValueEntries()
     {
-        // We add 1 as we also need to add in the Data property.
-        NameValueEntry[] entries = new NameValueEntry[_properties.Count + 1];
+        NameValueEntry[] entries = new NameValueEntry[_properties.Count];
         int              i       = 0;
         foreach (KeyValuePair<RedisValue, RedisValue> keyValuePair in _properties)
         {
             entries[i++] = new NameValueEntry(keyValuePair.Key, keyValuePair.Value);
         }
 
-        // Add data property if it exists.
-        entries[i] = new NameValueEntry("data", Data);
         return entries;
     }
 
@@ -159,7 +201,7 @@ public class SLRMessage
     /// <param name="message"></param>
     /// <param name="propertyName">Name of application property to retrieve</param>
     /// <returns>Object T or Null if not found</returns>
-    public T GetProperty<T>(string propertyName)
+    public T? GetPropertyObject<T>(string propertyName)
     {
         if (_properties.TryGetValue(propertyName, out RedisValue value))
         {
@@ -169,6 +211,33 @@ public class SLRMessage
         }
 
         return default(T);
+    }
+
+
+
+    public RedisValue GetProperty(string propertyName)
+    {
+        if (!_properties.TryGetValue(propertyName, out RedisValue redisValue))
+            return default(RedisValue);
+
+        return redisValue;
+    }
+
+
+    /// <summary>
+    /// Prints information about the message.  So key properties and ApplicationProperties
+    /// </summary>
+    /// <returns></returns>
+    public string PrintMessageInfo()
+    {
+        StringBuilder sb = new StringBuilder();
+
+        foreach (KeyValuePair<RedisValue, RedisValue> appProperty in Properties)
+        {
+            sb.Append($"\nAppProp:  {appProperty.Key} --> {appProperty.Value.ToString()}");
+        }
+
+        return sb.ToString();
     }
 
 

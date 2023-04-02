@@ -1,4 +1,6 @@
-﻿using StackExchange.Redis;
+﻿using System.Dynamic;
+using ByteSizeLib;
+using StackExchange.Redis;
 
 namespace SlugEnt.SLRStreamProcessing;
 
@@ -15,6 +17,12 @@ public class SLRStreamVitals
     public StreamGroupInfo[] ApplicationInfo { get; protected set; }
 
     public StreamConsumerInfo[] ConsumerInfo { get; protected set; }
+
+
+    /// <summary>
+    /// Returns the Size of the stream in Bytes.
+    /// </summary>
+    public ByteSize SizeInBytes { get; protected set; }
 
 
     /// <summary>
@@ -60,7 +68,7 @@ public class SLRStreamVitals
     {
         SLRStreamVitals vitals = new SLRStreamVitals(theStream);
 
-        // Retrieve the individuals pieces of info from Redis
+        // Retrieve the individual pieces of info from Redis
         vitals.StreamInfo      = await theStream.GetStreamInfo();
         vitals.ApplicationInfo = await theStream.GetApplicationInfo();
 
@@ -69,6 +77,8 @@ public class SLRStreamVitals
         else
             vitals.ConsumerInfo = null;
 
+        // Get the size in bytes
+        vitals.SizeInBytes = await theStream.GetSize();
 
         vitals.CalculateStats();
 

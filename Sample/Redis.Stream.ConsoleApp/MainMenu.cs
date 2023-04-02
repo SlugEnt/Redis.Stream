@@ -166,7 +166,7 @@ public class MainMenu
         SampleUser userA       = new("Bob Jones", 25, false);
         SLRMessage messageUser = SLRMessage.CreateMessage<SampleUser>(userA);
         messageUser.AddProperty("Type", "user");
-        messageUser.AddProperty("User", userA);
+        messageUser.AddPropertyObject<SampleUser>("User", userA);
 
         //RedisMessage message = RedisMessage.CreateMessage("This is a message");
         //message.AddProperty("UserName", "Bob Jones");
