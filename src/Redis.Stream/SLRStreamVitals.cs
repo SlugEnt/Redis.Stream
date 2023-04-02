@@ -14,10 +14,23 @@ public class SLRStreamVitals
 
     public StreamInfo StreamInfo { get; protected set; }
 
-    public StreamGroupInfo[] ApplicationInfo { get; protected set; }
 
+    /// <summary>
+    /// Returns the Application (Group) information for this application on this stream
+    /// </summary>
+    public StreamGroupInfo ApplicationInfo { get; internal set; }
+
+
+    /// <summary>
+    /// Returns information about this particular consumer for this application on this stream
+    /// </summary>
     public StreamConsumerInfo[] ConsumerInfo { get; protected set; }
 
+
+    /// <summary>
+    /// Returns all known consumer groups for the stream
+    /// </summary>
+    public StreamGroupInfo[] ApplicationsOnStream { get; protected set; }
 
     /// <summary>
     /// Returns the Size of the stream in Bytes.
@@ -46,7 +59,7 @@ public class SLRStreamVitals
     /// </summary>
     public int Statistic_NumberOfApplicationGroups
     {
-        get { return ApplicationInfo.Length; }
+        get { return ApplicationsOnStream.Length; }
     }
 
 
@@ -69,8 +82,17 @@ public class SLRStreamVitals
         SLRStreamVitals vitals = new SLRStreamVitals(theStream);
 
         // Retrieve the individual pieces of info from Redis
-        vitals.StreamInfo      = await theStream.GetStreamInfo();
-        vitals.ApplicationInfo = await theStream.GetApplicationInfo();
+        vitals.StreamInfo           = await theStream.GetStreamInfo();
+        vitals.ApplicationsOnStream = await theStream.GetApplicationInfo();
+        foreach (StreamGroupInfo streamGroupInfo in vitals.ApplicationsOnStream)
+        {
+            if (streamGroupInfo.Name == theStream.ApplicationName)
+            {
+                vitals.ApplicationInfo = streamGroupInfo;
+                break;
+            }
+        }
+
 
         if (theStream.CanConsumeMessages)
             vitals.ConsumerInfo = await theStream.GetConsumerInfo();
@@ -100,7 +122,7 @@ public class SLRStreamVitals
         // This is the greatest possible message id in the system that is possible.
         string lastDeliveredMessage = lastDeliveredUnixTime + "-" + lastDeliveredUnixTime;
 
-        foreach (StreamGroupInfo gInfo in ApplicationInfo)
+        foreach (StreamGroupInfo gInfo in ApplicationsOnStream)
         {
             // Figure out the LastDelivered Message Time and sequence number
             (long unixTime, long sequence) = GetMessageIdAndSequence(gInfo.LastDeliveredId);
@@ -149,5 +171,26 @@ public class SLRStreamVitals
                 ArgumentException($"The parameter messageId is not a Redis Message ID. It needs to be in format #-#.  Unable to parse the value after the dash to a number: {messageId}");
 
         return (unixTime, seq);
+    }
+
+
+
+    /// <summary>
+    /// Returns True if the application already exists as a Consumer group on the stream
+    /// </summary>
+    /// <param name="applicationName"></param>
+    /// <returns></returns>
+    public bool ApplicationExistsOnStream(string applicationName = "")
+    {
+        if (applicationName == string.Empty)
+            applicationName = _stream.ApplicationName;
+
+        foreach (StreamGroupInfo streamGroupInfo in ApplicationsOnStream)
+        {
+            if (applicationName == streamGroupInfo.Name)
+                return true;
+        }
+
+        return false;
     }
 }

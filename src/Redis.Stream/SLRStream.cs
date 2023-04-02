@@ -51,10 +51,8 @@ public class SLRStream
                                         RedisConfiguration redisConfiguration)
     {
         //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
-        StreamName      = streamConfig.StreamName;
-        ApplicationName = streamConfig.ApplicationName;
-
-        //_redisMultiplexer                 = multiplexer == null ? streamConfig.Multiplexer : multiplexer;
+        StreamName                        = streamConfig.StreamName;
+        ApplicationName                   = streamConfig.ApplicationName;
         StreamType                        = streamConfig.StreamType;
         MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
 
@@ -69,7 +67,8 @@ public class SLRStream
         _redisClient = new RedisClient(_redisConnectionPoolManager, serializer, redisConfiguration);
 
 
-        //_pendingAcknowledgements          = new RedisValue[MaxPendingMessageAcknowledgements];
+        // Get Stream Vitals
+        SLRStreamVitals vitals = await GetStreamVitals();
 
 
         switch (StreamType)
@@ -133,16 +132,14 @@ public class SLRStream
             // Create the Consumer Group if that type of Stream
             if (IsConsumerGroup)
             {
-                if (!await TryCreateConsumerGroup())
-                    throw new ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
-                if (!await SetConsumerApplicationId())
-                    throw new
-                        ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
-
-
-                // Need to determine the ID of this instance of the consumer group - so query redis and get the list of current consumers.
-                StreamConsumerInfo[] consumerInfo = await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName);
-                if (consumerInfo.Length == 0) { }
+                if (!vitals.ApplicationExistsOnStream())
+                {
+                    if (!await TryCreateConsumerGroup())
+                        throw new ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
+                    if (!await SetConsumerApplicationId())
+                        throw new
+                            ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
+                }
             }
         }
         catch (Exception ex)
@@ -224,7 +221,6 @@ public class SLRStream
     {
         try
         {
-            // TODO Change the Zero to be a parameter?
             await _redisClient.Db0.Database.StreamCreateConsumerGroupAsync(StreamName, ApplicationName, STREAM_POSITION_BEGINNING);
         }
         catch (RedisServerException ex)
