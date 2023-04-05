@@ -360,6 +360,92 @@ public class Test_SLRStream : SetupRedisConfiguration
     }
 
 
+
+    // Confirms that a producer upon initialization will create the stream
+    [Test]
+    public async Task ProducerCreatesStream_IfDoesNotExist()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName = _uniqueKeys.GetKey("TstExists"), ApplicationName = _uniqueKeys.GetKey("Exists"), StreamType = EnumSLRStreamTypes.ProducerOnly,
+        };
+
+        try
+        {
+            bool exists = await _slrStreamEngine.StreamExistsAsync(config.StreamName);
+            Assert.IsFalse(exists, "A10:");
+
+            // Setup Producer of stream
+            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            // Stream should exist:
+            exists = await _slrStreamEngine.StreamExistsAsync(config.StreamName);
+            Assert.IsTrue(exists, "A20:");
+
+            // Vitals should also showing it exists
+            SLRStreamVitals vitals = await stream.GetStreamVitals();
+            Assert.IsTrue(vitals.StreamExists, "A30:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    // Confirms that a consumer upon initialization will create the stream
+    [Test]
+    public async Task ConsumerCreatesStream_IfDoesNotExist()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName      = _uniqueKeys.GetKey("TstExists"),
+            ApplicationName = _uniqueKeys.GetKey("Exists"),
+            StreamType      = EnumSLRStreamTypes.SimpleConsumerOnly,
+        };
+
+        try
+        {
+            bool exists = await _slrStreamEngine.StreamExistsAsync(config.StreamName);
+            Assert.IsFalse(exists, "A10:");
+
+            // Setup Consumer of stream
+            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            // Stream should exist:
+            exists = await _slrStreamEngine.StreamExistsAsync(config.StreamName);
+            Assert.IsTrue(exists, "A20:");
+
+            // Vitals should also showing it exists
+            SLRStreamVitals vitals = await stream.GetStreamVitals();
+            Assert.IsTrue(vitals.StreamExists, "A30:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+
     // SAmple
     [Test]
     public async Task Sample()

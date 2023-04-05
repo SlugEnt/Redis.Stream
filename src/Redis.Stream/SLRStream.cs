@@ -19,10 +19,7 @@ public class SLRStream
     public const string STREAM_POSITION_CG_NEW_MESSAGES  = ">";
 
 
-    private ILogger<SLRStream> _logger;
-
-//    private   ConnectionMultiplexer      _redisMultiplexer;
-    //private   IDatabase                  _redisClient.Db0.Database;
+    private   ILogger<SLRStream>         _logger;
     protected RedisConnectionPoolManager _redisConnectionPoolManager;
     protected RedisClient                _redisClient;
 
@@ -45,110 +42,133 @@ public class SLRStream
     /// </summary>
     /// <param name="streamConfig">The configuration object for the stream</param>
     /// <param name="multiplexer">If not null, it overrides any multiplexer set in the config</param>
-
-    //internal async Task SetStreamValues(string streamName, string applicationName, EnumRedisStreamTypes streamType, ConnectionMultiplexer multiplexer)
     internal async Task SetStreamConfig(SLRStreamConfig streamConfig, RedisConnectionPoolManager redisConnectionPoolManager,
                                         RedisConfiguration redisConfiguration)
     {
-        //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
-        StreamName                        = streamConfig.StreamName;
-        ApplicationName                   = streamConfig.ApplicationName;
-        StreamType                        = streamConfig.StreamType;
-        MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
-
-        _pendingAcknowledgements          = new();
-        AutoAcknowledgeMessagesOnDelivery = streamConfig.AcknowledgeOnDelivery;
-
-
-        // Configure Redis Connection
-        // TODO RedisconnectionPoolManager can take an ILogger.  Probably need to create one...
-        _redisConnectionPoolManager = redisConnectionPoolManager;
-        SystemTextJsonSerializer serializer = new();
-        _redisClient = new RedisClient(_redisConnectionPoolManager, serializer, redisConfiguration);
-
-
-        // Get Stream Vitals
-        SLRStreamVitals vitals = await GetStreamVitals();
-
-
-        switch (StreamType)
-        {
-            case EnumSLRStreamTypes.ProducerOnly:
-                CanProduceMessages = true;
-                break;
-
-            case EnumSLRStreamTypes.SimpleConsumerOnly:
-                CanConsumeMessages = true;
-                break;
-
-            case EnumSLRStreamTypes.ConsumerGroupOnly:
-                CanConsumeMessages = true;
-                IsConsumerGroup    = true;
-                break;
-
-            case EnumSLRStreamTypes.ProducerAndConsumerGroup:
-                CanProduceMessages = true;
-                CanConsumeMessages = true;
-                IsConsumerGroup    = true;
-                break;
-
-            case EnumSLRStreamTypes.ProducerAndSimpleConsumer:
-                CanProduceMessages = true;
-                CanConsumeMessages = true;
-                break;
-        }
-
-        // We need to query the stream to get some info.
-
-
-        // Set Stream Read Starting Position
-        switch (streamConfig.StartingMessage)
-        {
-            case EnumSLRStreamStartingPoints.Beginning:
-                LastMessageId = STREAM_POSITION_BEGINNING;
-                break;
-            case EnumSLRStreamStartingPoints.Now:
-                if (_redisClient.Db0.Database.KeyExists(StreamName))
-                {
-                    StreamInfo streamInfo = _redisClient.Db0.Database.StreamInfo(StreamName);
-                    LastMessageId = streamInfo.LastGeneratedId;
-                }
-                else
-                    LastMessageId = STREAM_POSITION_BEGINNING;
-
-                break;
-            case EnumSLRStreamStartingPoints.LastConsumedForConsumerGroup: break;
-            case EnumSLRStreamStartingPoints.SpecifiedValue:
-                if (streamConfig.StartingMessageId == RedisValue.EmptyString)
-                    throw new
-                        ApplicationException($"You said you wanted to specify the starting message for Stream: {StreamName}, but the StartingMessageId in the config was never set.");
-
-                break;
-        }
-
-
         try
         {
-            // Create the Consumer Group if that type of Stream
-            if (IsConsumerGroup)
+            //  TODO Add a StreamConfig object so set some of these variables, especially starting offset??
+            StreamName                        = streamConfig.StreamName;
+            ApplicationName                   = streamConfig.ApplicationName;
+            StreamType                        = streamConfig.StreamType;
+            MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
+
+            _pendingAcknowledgements          = new();
+            AutoAcknowledgeMessagesOnDelivery = streamConfig.AcknowledgeOnDelivery;
+
+
+            // Configure Redis Connection
+            // TODO RedisconnectionPoolManager can take an ILogger.  Probably need to create one...
+            _redisConnectionPoolManager = redisConnectionPoolManager;
+            SystemTextJsonSerializer serializer = new();
+            _redisClient = new RedisClient(_redisConnectionPoolManager, serializer, redisConfiguration);
+
+
+            // Get Stream Vitals
+            SLRStreamVitals vitals = await GetStreamVitals();
+
+
+            switch (StreamType)
             {
-                if (!vitals.ApplicationExistsOnStream())
+                case EnumSLRStreamTypes.ProducerOnly:
+                    CanProduceMessages = true;
+                    break;
+
+                case EnumSLRStreamTypes.SimpleConsumerOnly:
+                    CanConsumeMessages = true;
+                    break;
+
+                case EnumSLRStreamTypes.ConsumerGroupOnly:
+                    CanConsumeMessages = true;
+                    IsConsumerGroup    = true;
+                    break;
+
+                case EnumSLRStreamTypes.ProducerAndConsumerGroup:
+                    CanProduceMessages = true;
+                    CanConsumeMessages = true;
+                    IsConsumerGroup    = true;
+                    break;
+
+                case EnumSLRStreamTypes.ProducerAndSimpleConsumer:
+                    CanProduceMessages = true;
+                    CanConsumeMessages = true;
+                    break;
+            }
+
+
+            // If stream does not exist - create it if a producing stream
+            if (!vitals.StreamExists)
+            {
+                await CreateStreamAsync();
+                vitals = await GetStreamVitals();
+
+                /*if (CanProduceMessages)
                 {
-                    if (!await TryCreateConsumerGroup())
-                        throw new ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
-                    if (!await SetConsumerApplicationId())
-                        throw new
-                            ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
+                    SLRMessage msg = SLRMessage.CreateMessage("Create Stream");
+                    await SendMessageAsync(msg);
+                    vitals = await GetStreamVitals();
+                }
+                */
+            }
+
+
+            // Set Stream Read Starting Position
+            if (CanConsumeMessages)
+            {
+                switch (streamConfig.StartingMessage)
+                {
+                    case EnumSLRStreamStartingPoints.Beginning:
+                        LastMessageId = STREAM_POSITION_BEGINNING;
+                        break;
+                    case EnumSLRStreamStartingPoints.Now:
+                        if (_redisClient.Db0.Database.KeyExists(StreamName))
+                        {
+                            StreamInfo streamInfo = _redisClient.Db0.Database.StreamInfo(StreamName);
+                            LastMessageId = streamInfo.LastGeneratedId;
+                        }
+                        else
+                            LastMessageId = STREAM_POSITION_BEGINNING;
+
+                        break;
+                    case EnumSLRStreamStartingPoints.LastConsumedForConsumerGroup: break;
+                    case EnumSLRStreamStartingPoints.SpecifiedValue:
+                        if (streamConfig.StartingMessageId == RedisValue.EmptyString)
+                            throw new
+                                ApplicationException($"You said you wanted to specify the starting message for Stream: {StreamName}, but the StartingMessageId in the config was never set.");
+
+                        break;
                 }
             }
+
+
+            try
+            {
+                // Create the Consumer Group if that type of Stream
+                if (IsConsumerGroup)
+                {
+                    if (!vitals.ApplicationExistsOnStream())
+                    {
+                        if (!await TryCreateConsumerGroup())
+                            throw new
+                                ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
+                        if (!await SetConsumerApplicationId())
+                            throw new
+                                ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message, ex);
+                throw;
+            }
+
+            IsInitialized = true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex.Message, ex);
-            throw;
+            _logger.LogError($"Error In StreamConfig.  {ex.Message}", ex);
         }
-
-        IsInitialized = true;
     }
 
 
@@ -339,9 +359,28 @@ public class SLRStream
     public ulong StatisticMessagesSent { get; protected set; }
 
 
+    /// <summary>
+    /// The number of times the FlushPendingMessages method was called.
+    /// </summary>
+    public ulong StatisticFlushedMessageCalls { get; protected set; }
+
+
     public long StatisticMessagesConsumed { get; protected set; }
 
 #endregion
+
+
+    /// <summary>
+    /// Creates a stream on the Redis server by sending an initial message.  Note, this bypasses the CanProduceMessages check, so both producers and consumers can create the streaam
+    /// This is necessary, because we cannot create the Stream groups without the stream.
+    /// </summary>
+    /// <returns></returns>
+    public async Task CreateStreamAsync()
+    {
+        SLRMessage       message = SLRMessage.CreateMessage("Create Stream");
+        NameValueEntry[] values  = message.GetNameValueEntries();
+        await _redisClient.Db0.Database.StreamAddAsync(StreamName, values);
+    }
 
 
     /// <summary>
@@ -368,7 +407,8 @@ public class SLRStream
 
 
     /// <summary>
-    /// Reads up to max messages from the stream
+    /// Reads up to max messages from the stream.  Note, it will starting with messages after the last message consumed DURING THIS SESSION.  Other consumers know nothing about
+    /// what messages you have read or consumed and will start by default at the very first message in the queue.
     /// </summary>
     /// <param name="numberOfMessagesToRetrieve"></param>
     /// <returns></returns>
@@ -468,6 +508,7 @@ public class SLRStream
         RedisValue[] acks  = _pendingAcknowledgements.ToArray();
         long         count = await AcknowledgePendingMessages(acks);
         _pendingAcknowledgements.Clear();
+        StatisticFlushedMessageCalls++;
     }
 
 
@@ -552,7 +593,23 @@ public class SLRStream
     /// Returns information about the consumers in group.
     /// </summary>
     /// <returns></returns>
-    public async Task<StreamConsumerInfo[]> GetConsumerInfo() { return await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName); }
+    public async Task<StreamConsumerInfo[]> GetConsumerInfo()
+    {
+        try
+        {
+            return await _redisClient.Db0.Database.StreamConsumerInfoAsync(StreamName, ApplicationName);
+        }
+        catch (RedisServerException rse)
+        {
+            if (rse.Message.Contains("NOGROUP"))
+            {
+                StreamConsumerInfo[] empty = new StreamConsumerInfo[0];
+                return empty;
+            }
+            else
+                throw;
+        }
+    }
 
 
     /// <summary>
@@ -594,7 +651,6 @@ public class SLRStream
     /// <returns>ByteSize value</returns>
     public async Task<ByteSize> GetSize()
     {
-        //TODO
         List<string> xGroupArgs = new();
         xGroupArgs.Add("USAGE");
         xGroupArgs.Add(StreamName);
@@ -603,5 +659,42 @@ public class SLRStream
 
         ByteSize x = ByteSize.FromBytes((double)result);
         return x;
+    }
+
+
+
+    /// <summary>
+    /// Deletes the given message ID's.
+    /// <para>This should be used with caution with ConsumerGroups</para>
+    /// </summary>
+    /// <param name="messageId"></param>
+    /// <returns></returns>
+    public async Task<long> DeleteMessages(RedisValue[] messageId)
+    {
+        List<string> xGroupArgs = new();
+        xGroupArgs.Add(StreamName);
+        string cmd = $"XDEL";
+        foreach (RedisValue messageID in messageId)
+        {
+            xGroupArgs.Add(messageID);
+        }
+
+        RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
+
+        //long deleted = await _redisClient.Db0.Database.StreamDeleteAsync(StreamName, messageId);
+        return (long)result;
+    }
+
+
+    /// <summary>
+    /// This should really never be called in a production app.  Resets all statistic counters to 0.
+    /// </summary>
+    public void ResetStatistics()
+    {
+        StatisticFlushedMessageCalls = 0;
+        StatisticMessagesReceived    = 0;
+        StatisticMessagesConsumed    = 0;
+        StatisticMessagesSent        = 0;
+        StatisticMessagesReceived    = 0;
     }
 }

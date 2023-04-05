@@ -12,6 +12,15 @@ public class SLRStreamVitals
     protected SLRStreamVitals(SLRStream stream) { _stream = stream; }
 
 
+    /// <summary>
+    /// True if the stream exists on the Redis server
+    /// </summary>
+    public bool StreamExists { get; protected set; }
+
+
+    /// <summary>
+    /// The StreamInfo information about the stream
+    /// </summary>
     public StreamInfo StreamInfo { get; protected set; }
 
 
@@ -81,28 +90,43 @@ public class SLRStreamVitals
     {
         SLRStreamVitals vitals = new SLRStreamVitals(theStream);
 
-        // Retrieve the individual pieces of info from Redis
-        vitals.StreamInfo           = await theStream.GetStreamInfo();
-        vitals.ApplicationsOnStream = await theStream.GetApplicationInfo();
-        foreach (StreamGroupInfo streamGroupInfo in vitals.ApplicationsOnStream)
+        try
         {
-            if (streamGroupInfo.Name == theStream.ApplicationName)
+            // Retrieve the individual pieces of info from Redis
+            vitals.StreamInfo           = await theStream.GetStreamInfo();
+            vitals.StreamExists         = true;
+            vitals.ApplicationsOnStream = await theStream.GetApplicationInfo();
+            foreach (StreamGroupInfo streamGroupInfo in vitals.ApplicationsOnStream)
             {
-                vitals.ApplicationInfo = streamGroupInfo;
-                break;
+                if (streamGroupInfo.Name == theStream.ApplicationName)
+                {
+                    vitals.ApplicationInfo = streamGroupInfo;
+                    break;
+                }
             }
+
+
+            if (theStream.CanConsumeMessages)
+                vitals.ConsumerInfo = await theStream.GetConsumerInfo();
+            else
+                vitals.ConsumerInfo = null;
+
+            // Get the size in bytes
+            vitals.SizeInBytes = await theStream.GetSize();
+
+            vitals.CalculateStats();
         }
+        catch (RedisServerException rse)
+        {
+            if (rse.Message.Contains("ERR no such key"))
+                return vitals;
 
-
-        if (theStream.CanConsumeMessages)
-            vitals.ConsumerInfo = await theStream.GetConsumerInfo();
-        else
-            vitals.ConsumerInfo = null;
-
-        // Get the size in bytes
-        vitals.SizeInBytes = await theStream.GetSize();
-
-        vitals.CalculateStats();
+            throw rse;
+        }
+        catch (Exception ex)
+        {
+            throw ex;
+        }
 
         return vitals;
     }
@@ -116,7 +140,7 @@ public class SLRStreamVitals
     protected void CalculateStats()
     {
         RedisValue lastDeliveredId;
-        long       lastDeliveredUnixTime = long.MaxValue;
+        long       lastDeliveredUnixTime = DateTimeOffset.MaxValue.ToUnixTimeMilliseconds();
         long       lastDeliveredSequence = long.MaxValue;
 
         // This is the greatest possible message id in the system that is possible.

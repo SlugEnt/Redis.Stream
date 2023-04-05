@@ -3,6 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 using StackExchange.Redis.Extensions.Core.Implementations;
+using StackExchange.Redis.Extensions.Core.Abstractions;
+using StackExchange.Redis.Extensions.Core;
+using StackExchange.Redis.Extensions.System.Text.Json;
 
 namespace SlugEnt.SLRStreamProcessing;
 
@@ -92,12 +95,12 @@ public class SLRStreamEngine
 
     /// <summary>
     /// Returns a new Stream of the type specified.  If the type is a Consumer Group, the consumer group name is the application name.
+    /// <para>The returned stream is fully configured and ready for use.</para>
     /// </summary>
     /// <param name="streamName">Name of the stream to work with</param>
     /// <param name="applicationName">Name of this application</param>
     /// <param name="redisStreamType">The type of stream.  Defaults to a simple producer/consumer</param>
-    /// <returns></returns>
-    /// 
+    /// <returns>A new stream connection with the specific configuraiton</returns>
     public async Task<SLRStream> GetSLRStreamAsync(SLRStreamConfig slrStreamConfig)
     {
         if (!IsInitialized)
@@ -112,9 +115,20 @@ public class SLRStreamEngine
             throw new ApplicationException("Unable to create a SLRStream object from the ServiceProvider.");
 
         await stream.SetStreamConfig(slrStreamConfig, RedisConnectionPoolManager, RedisConfiguration);
-
-        //await stream.SetStreamValues(streamName, applicationName, redisStreamType, _multiplexer);
         return stream;
+    }
+
+
+    /// <summary>
+    /// Returns if the Stream exists on the Redis Server
+    /// </summary>
+    /// <param name="streamName">Name of stream to search for</param>
+    /// <returns>True if stream exists, false if it does not</returns>
+    public async Task<bool> StreamExistsAsync(string streamName)
+    {
+        SystemTextJsonSerializer serializer  = new();
+        RedisClient              redisClient = new RedisClient(RedisConnectionPoolManager, serializer, RedisConfiguration);
+        return await redisClient.Db0.Database.KeyExistsAsync(streamName);
     }
 
 
