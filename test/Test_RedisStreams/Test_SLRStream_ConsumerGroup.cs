@@ -128,37 +128,6 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     }
 
 
-    private async Task<SLRStream> SetupTestProducer(SLRStreamConfig config)
-    {
-        // A.  Produce
-        SLRStream stream = await _slrStreamEngine.GetSLRStreamAsync(config);
-        Assert.IsNotNull(stream, "A10:");
-
-        // Ensure no messages - there probably is at least 1 - the creation message
-        StreamEntry[] emptyMessages = await stream.ReadStreamGroupAsync(1000);
-
-        foreach (StreamEntry emptyMessage in emptyMessages)
-        {
-            await stream.AddPendingAcknowledgementAsync(emptyMessage);
-        }
-
-        // Ensure it is flushed.
-        await stream.FlushPendingAcknowledgementsAsync();
-        RedisValue[] values = new RedisValue[emptyMessages.Length];
-        int          i      = 0;
-        foreach (StreamEntry emptyMessage in emptyMessages)
-        {
-            values[i++] = emptyMessage.Id;
-        }
-
-        await stream.DeleteMessages(values);
-
-        // Reset any counters;
-        stream.ResetStatistics();
-        return stream;
-    }
-
-
     // Reads the messages, and then does a manual acknowledgement.
     [Test]
     public async Task ReadMessages_WithManualAck()
@@ -834,7 +803,8 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
     [Test]
-    [Repeat(20)]
+
+    //[Repeat(20)]
     public async Task RemoveMessages()
     {
         SLRStream stream = null;

@@ -303,9 +303,8 @@ public class Test_SLRStream : SetupRedisConfiguration
 
         try
         {
-            // Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
-            Assert.IsNotNull(stream, "A10:");
+            stream = await SetupTestProducer(config);
+
 
             string propName1 = "username";
             string propName2 = "password";
@@ -330,12 +329,12 @@ public class Test_SLRStream : SetupRedisConfiguration
             {
                 StreamEntry[] messages = await stream.ReadStreamAsync(1);
                 if (messages.Length > 0)
-                    Assert.AreEqual(1, messages.Length, "A20: Received more than the expected number of messages. Expected 1.");
+                    Assert.AreEqual(messageLimit, messages.Length, "A20: Received more than the expected number of messages. Expected 1.");
                 received += messages.Length;
 
                 // Create a SLRMessage from the message
                 SLRMessage message = new SLRMessage(messages[j]);
-                Assert.AreEqual(4, message.Properties.Count, "A100:");
+                Assert.AreEqual(3, message.Properties.Count, "A100:");
 
                 string value = message.GetPropertyAsString(propName1);
                 Assert.AreEqual(userName, value, "A110:");

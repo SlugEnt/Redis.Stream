@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using SlugEnt;
 using SlugEnt.SLRStreamProcessing;
+using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 
 namespace Test_RedisStreams;
@@ -40,5 +41,55 @@ public class SetupRedisConfiguration
         _slrStreamEngine = engine;
 
         _uniqueKeys = new();
+    }
+
+
+    /// <summary>
+    /// Setups the producer for a given test.  It also removes any initial messages created as part of the setup process.  For instance
+    /// the accessing of a stream that does not exist automatically creates it by sending a create message.  This removes that initial message
+    /// so it does not mess with the tests.
+    /// </summary>
+    /// <param name="config"></param>
+    /// <returns></returns>
+    public async Task<SLRStream> SetupTestProducer(SLRStreamConfig config)
+    {
+        // A.  Produce
+        SLRStream stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+        Assert.IsNotNull(stream, "A10:");
+
+        stream.ResetStatistics();
+
+
+        // Ensure no messages - there probably is at least 1 - the creation message
+        StreamEntry[] emptyMessages;
+        if (stream.IsConsumerGroup)
+        {
+            emptyMessages = await stream.ReadStreamGroupAsync(1000);
+            foreach (StreamEntry emptyMessage in emptyMessages)
+            {
+                await stream.AddPendingAcknowledgementAsync(emptyMessage);
+            }
+
+            // Ensure it is flushed.
+            await stream.FlushPendingAcknowledgementsAsync();
+        }
+        else
+        {
+            emptyMessages = await stream.ReadStreamAsync(1000);
+        }
+
+
+        RedisValue[] values = new RedisValue[emptyMessages.Length];
+        int          i      = 0;
+        foreach (StreamEntry emptyMessage in emptyMessages)
+        {
+            values[i++] = emptyMessage.Id;
+        }
+
+        await stream.DeleteMessages(values);
+
+        // Reset any counters;
+        stream.ResetStatistics();
+        return stream;
     }
 }

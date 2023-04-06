@@ -671,6 +671,9 @@ public class SLRStream
     /// <returns></returns>
     public async Task<long> DeleteMessages(RedisValue[] messageId)
     {
+        if (messageId.Length == 0)
+            return 0;
+
         List<string> xGroupArgs = new();
         xGroupArgs.Add(StreamName);
         string cmd = $"XDEL";
@@ -696,5 +699,6 @@ public class SLRStream
         StatisticMessagesConsumed    = 0;
         StatisticMessagesSent        = 0;
         StatisticMessagesReceived    = 0;
+        LastMessageId                = STREAM_POSITION_BEGINNING;
     }
 }
