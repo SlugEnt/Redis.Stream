@@ -97,8 +97,11 @@ SimpleProducer streams are streams that are enabled to be written to by the call
 ### Simple Consumer Streams
 These are streams that can read messages from the Redis Streams.  The Simple Consumer logic provides the most simplistic of features.  Features it provides are:
 * It remeembers the last message read in the stream during this session.  Subsequent calls to read more messages will only get new messages since the last read.
-
+ 
 I said they were simple!
+
+Disadvantages:
+* You have to store off the last message read, it is not automatically stored in Redis and thus does not survive application restarts*
 
 
 ### Consumer Group Streams
@@ -107,7 +110,7 @@ These are streams that have more advanced capabilities than simple Consumer Stre
 * This last message processed by an application is stored in Redis and survives application and session restarts!
 * Multiple instances of the same application can be run in parallel.  Redis will ensure only 1 instance gets a given message.
 * Messages can be auto-acknowledged or manually acknowledged, but they MUST be acknowledged.
-* *
+* Unacknowledged messages after a period of time (Configurable by the app) become Pending and can be assumed by another consumer.*
 
 
 #### Reading from a Consumer Group
@@ -139,6 +142,16 @@ Reading messages is simply a matter of calling the ReadStreamGroupAsync method. 
 
 Note:  The AddPendingAcknowledgementAsync method will automatically call a FlushPendingAcknowledgementsAsync if the number of acknowledgements exceeds a user specified threshold.
 
+To setup Auto-Acknowledgement:
+```
+    SLRStreamConfig config = new()
+    {
+        StreamName            = _uniqueKeys.GetKey("TstCG"),
+        ApplicationName       = _uniqueKeys.GetKey("AppCG"),
+        StreamType            = EnumSLRStreamTypes.ConsumerGroupOnly,
+        AcknowledgeOnDelivery = true,
+    };
+```
 
 ### SLRStreamEngine
 

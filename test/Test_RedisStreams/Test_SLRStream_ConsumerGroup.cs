@@ -6,6 +6,7 @@ using SlugEnt;
 using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 using System.IO;
+using NUnit.Framework.Constraints;
 
 namespace Test_RedisStreams;
 
@@ -302,10 +303,11 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             Assert.AreEqual(messagesProduced, received, "a100:");
 
 
-            // C. Consume again  There should be no more pending messages
+            // C. Consume again  There should be no Normal messages
             StreamEntry[] noMessages = await stream.ReadStreamGroupAsync(messageLimit * 2);
             Assert.AreEqual(0, noMessages.Length, "A300:");
 
+            // And no pending messages
             StreamEntry[] noPendingMessage = await stream.ReadStreamGroupAsync(messageLimit * 2, true);
             Assert.AreEqual(0, noPendingMessage.Length, "A310:");
         }
@@ -341,8 +343,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         try
         {
             // A.  Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
-            Assert.IsNotNull(stream, "A10:");
+            stream = await SetupTestProducer(config);
 
             int messageLimit     = 6;
             int messagesProduced = 0;
@@ -425,8 +426,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         try
         {
             // A.  Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
-            Assert.IsNotNull(stream, "A10:");
+            stream = await SetupTestProducer(config);
 
             int messageLimit     = 3;
             int messagesProduced = 0;
@@ -476,7 +476,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
     /// <summary>
-    /// Validates that the GetPendingMessage count method works correctly
+    /// Validates the PendingMessage GetPendingMessage count method works correctly
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -495,8 +495,8 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         try
         {
             // A.  Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
-            Assert.IsNotNull(stream, "A10:");
+            stream = await SetupTestProducer(config);
+
 
             int messageLimit     = 3;
             int messagesProduced = 0;
@@ -534,6 +534,12 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // E. Test the GetApplicationPendingMessages method
             Assert.AreEqual(3, await consumers[0].GetApplicationPendingMessageCount(), "E10:");
             Assert.AreEqual(0, await consumers[1].GetApplicationPendingMessageCount(), "E20:");
+
+            // F. Get the pending messages.  We set auto acknowledge on so they are removed from the pending list.
+            consumers[0].AutoAcknowledgeMessagesOnDelivery = true;
+            messages                                       = await consumers[0].ReadStreamGroupAsync(messageLimit, true);
+            Assert.AreEqual(3, messages.Length, "F10:");
+            Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "F20:");
         }
         catch (Exception e)
         {
@@ -549,6 +555,86 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         }
     }
 
+
+
+    [Test]
+    public async Task PendingMessages()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstPend"),
+            ApplicationName        = _uniqueKeys.GetKey("AppPend"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            AcknowledgeOnDelivery  = false,
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+            int messageLimit     = 6;
+            int messagesProduced = 0;
+            for (messagesProduced = 0; messagesProduced < messageLimit; messagesProduced++)
+            {
+                SLRMessage message = SLRMessage.CreateMessage($"i={messagesProduced}");
+                await stream.SendMessageAsync(message);
+            }
+
+
+            // B. Read messages but they are not acknowledged!
+            StreamEntry[] messages = await stream.ReadStreamGroupAsync(messageLimit);
+            Assert.AreEqual(messageLimit, messages.Length, "B10:");
+
+
+            // C. Validate there are the required number of pending messages
+            Assert.AreEqual(messageLimit, await stream.GetApplicationPendingMessageCount(), "C10:");
+
+
+            // D. Now read the pending messages.  Should be same # as messages created
+            messages = await stream.ReadStreamGroupAsync(messageLimit, true);
+            Assert.AreEqual(messageLimit, messages.Length, "D10:");
+
+            // E. Validate there are the required number of pending messages
+            Assert.AreEqual(messageLimit, await stream.GetApplicationPendingMessageCount(), "E10:");
+
+            // F. Acknowledge them
+            foreach (StreamEntry streamEntry in messages)
+            {
+                await stream.AddPendingAcknowledgementAsync(streamEntry);
+            }
+
+            await stream.FlushPendingAcknowledgementsAsync();
+
+
+            // G. Validate there are zero pending messages
+            Assert.AreEqual(0, await stream.GetApplicationPendingMessageCount(), "G10:");
+
+
+            // Validate there are no more messages to be read from pending
+            messages = await stream.ReadStreamGroupAsync(messageLimit, true);
+            Assert.AreEqual(0, messages.Length, "G20:");
+
+
+            // Validate there are no more messages to be read from normal
+            messages = await stream.ReadStreamGroupAsync(messageLimit, false);
+            Assert.AreEqual(0, messages.Length, "G30:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
 
 
     /// <summary>
