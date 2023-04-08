@@ -22,10 +22,7 @@ public class SLRStream
     private   ILogger<SLRStream>         _logger;
     protected RedisConnectionPoolManager _redisConnectionPoolManager;
     protected RedisClient                _redisClient;
-
-
-
-    private List<RedisValue> _pendingAcknowledgements;
+    private   List<RedisValue>           _pendingAcknowledgements;
 
 
     /// <summary>
@@ -52,9 +49,10 @@ public class SLRStream
             ApplicationName                   = streamConfig.ApplicationName;
             StreamType                        = streamConfig.StreamType;
             MaxPendingMessageAcknowledgements = streamConfig.MaxPendingAcknowledgements;
-
-            _pendingAcknowledgements          = new();
+            AutoClaimPendingMessagesThreshold = streamConfig.ClaimMessagesOlderThan;
             AutoAcknowledgeMessagesOnDelivery = streamConfig.AcknowledgeOnDelivery;
+
+            _pendingAcknowledgements = new();
 
 
             // Configure Redis Connection
@@ -439,7 +437,7 @@ public class SLRStream
     /// <param name="readPendingMessages">If true, it should read from the pending "queue" instead of the new queue.  Pending are messages already read once by this consumer, but never acknowledged.</param>
     /// <returns></returns>
     /// <exception cref="ApplicationException"></exception>
-    public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6, bool readPendingMessages = false)
+    public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6) //(, bool readPendingMessages = false))
     {
         if (!CanConsumeMessages)
             throw new
@@ -448,12 +446,38 @@ public class SLRStream
             throw new
                 ApplicationException($"Tried to read a stream as a group, but you have not specified Group Consumption on this stream. StreamName: {StreamName}.");
 
-        string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
+        //string streamPosition = readPendingMessages == false ? STREAM_POSITION_CG_NEW_MESSAGES : STREAM_POSITION_CG_HISTORY_START;
         StreamEntry[] messages =
-            await _redisClient.Db0.Database.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, streamPosition, numberOfMessagesToRetrieve,
+            await _redisClient.Db0.Database.StreamReadGroupAsync(StreamName, ApplicationName, ApplicationId, STREAM_POSITION_CG_NEW_MESSAGES,
+                                                                 numberOfMessagesToRetrieve,
                                                                  AutoAcknowledgeMessagesOnDelivery);
         StatisticMessagesReceived += (ulong)messages.Length;
         return messages;
+    }
+
+
+
+    /// <summary>
+    /// If there are any messages pending by other instances of this application that are older than AutoClaimPendingMessagesThreshold then this method will
+    /// claim up to numberOfMessagesToRetrieve messages and return them to the caller.
+    /// </summary>
+    /// <param name="numberOfMessagesToRetrieve">Maximum number of messages to attempt to claim</param>
+    /// <returns>StreamAutoClaimResult - Which will contain 3 values.  The NextStartId if it is anything other than 0-0 then there are more messages to claim.</returns>
+    /// <exception cref="ApplicationException"></exception>
+    public async Task<StreamAutoClaimResult> ReadStreamGroupPendingMessagesAsync(int numberOfMessagesToRetrieve = 6)
+    {
+        if (!CanConsumeMessages)
+            throw new
+                ApplicationException($"Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application.  StreamName: {StreamName}.");
+        if (!IsConsumerGroup)
+            throw new
+                ApplicationException($"Tried to read a stream as a group, but you have not specified Group Consumption on this stream. StreamName: {StreamName}.");
+
+        // Read any pending messages
+        StreamAutoClaimResult result = await _redisClient.Db0.Database.StreamAutoClaimAsync(StreamName, ApplicationName, ApplicationId,
+                                                                                            (long)AutoClaimPendingMessagesThreshold.TotalMilliseconds,
+                                                                                            STREAM_POSITION_BEGINNING, numberOfMessagesToRetrieve);
+        return result;
     }
 
 

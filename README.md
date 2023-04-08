@@ -102,6 +102,9 @@ I said they were simple!
 
 Disadvantages:
 * You have to store off the last message read, it is not automatically stored in Redis and thus does not survive application restarts*
+* Multiple instances of the same application reading from the stream will each get every messages, thus it is up to the applications to figure out how to handle this situation.
+
+Simple consumers have no message acknowledgement.  As soon as Redis has handed the message over to you, it is considered delivered and processed.  It is up to the application to keep track of the last message successfully processed and to move thru the messages in the stream.
 
 
 ### Consumer Group Streams
@@ -112,6 +115,11 @@ These are streams that have more advanced capabilities than simple Consumer Stre
 * Messages can be auto-acknowledged or manually acknowledged, but they MUST be acknowledged.
 * Unacknowledged messages after a period of time (Configurable by the app) become Pending and can be assumed by another consumer.*
 
+#### Consumer Group Applications
+Every stream that is going to be processed by consumer groups needs to have a group name that identifies it so that Redis knows which consumers are part of the group.  Redis refers to these as ConsumerGroups, SLRStreamProcessing calls this an Application.
+In addition to the Application to identify who is processing the stream, each instance of the Application that is running needs an ID.  This can be anything, but SLRStreamProcessing assigns it a sequential number.  Redis calls this the ConsumerId. 
+
+SLRStreamProcessing refers to this as the ApplicationId.  The SLRStreamProcessing engine auto-assigns this Id.  It simply looks for an available ID starting at zero.  This means that the latest instance, may not be the highest ApplicationId.  
 
 #### Reading from a Consumer Group
 To read from a Consumer Group your stream must be of a type that supports ConsumerGroups.  You set this in the config for the stream.
@@ -152,6 +160,26 @@ To setup Auto-Acknowledgement:
         AcknowledgeOnDelivery = true,
     };
 ```
+
+#### Acknowledgements
+Acknowledgements only apply to Consumers that are part of a ConsumerGroup. They can be manual or automatic.  It is recommended you use manual, as automatic assumes that as soon as Redis has delivered the message to you that is is delivered and processed and thus acknowledged.  If something happens during your processing of the message the other instances will not know that you did not compoletely processe the message and thus it should be re-delivered to another instance or even the same instance.  But this is upto the application designer's requirements.
+
+Acknowledgement handling is set via the config file.  The default is Manual Acknowledgement.
+```
+    SLRStreamConfig config = new()
+    {
+        // Automatic Acknowledgement.
+        AcknowledgeOnDelivery = true,
+
+        // Manual Acknowledgement (Default)
+        AcknowledgeOnDelivery = false,
+    };
+```
+
+
+#### Handling failed acknowledgements.
+For messages that are manually acknowledged, Redis Streams puts the message into a pending entry list for the consumer that is receiving the message.  Other instances can then periodically check to see if there are any messages that are in the pending entry list for other consumers of the same consumer group.  If there are they can take ownership of them and try to process them themselves.
+
 
 ### SLRStreamEngine
 

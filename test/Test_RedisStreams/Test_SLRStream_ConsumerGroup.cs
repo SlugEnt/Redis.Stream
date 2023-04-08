@@ -7,6 +7,7 @@ using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 using System.IO;
 using NUnit.Framework.Constraints;
+using NUnit.Framework.Interfaces;
 
 namespace Test_RedisStreams;
 
@@ -79,9 +80,10 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName      = _uniqueKeys.GetKey("TstCG"),
-            ApplicationName = _uniqueKeys.GetKey("AppCG"),
-            StreamType      = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.Zero,
         };
 
         try
@@ -102,17 +104,17 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             StreamEntry[] messages = await stream.ReadStreamGroupAsync(messageLimit * 2);
             received += messages.Length;
 
-            Assert.AreEqual(messagesProduced, received, "A100:");
+            Assert.AreEqual(messagesProduced, received, "B10:");
 
 
             // C. Consume again, since we did not acknowledge we should not see any new messages
             StreamEntry[] noMessages = await stream.ReadStreamGroupAsync(messageLimit * 2);
-            Assert.AreEqual(0, noMessages.Length, "A110:");
+            Assert.AreEqual(0, noMessages.Length, "C10:");
 
 
-            // D. Re-read the stream, but with the start with pending indicator set.
-            StreamEntry[] historyMessages = await stream.ReadStreamGroupAsync(messageLimit * 2, true);
-            Assert.AreEqual(messageLimit, historyMessages.Length, "A110:");
+            // D. Read the stream again to acquire the pending messages
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit * 2);
+            Assert.AreEqual(messageLimit, claimed.ClaimedEntries.Length, "D10:");
         }
         catch (Exception e)
         {
@@ -158,7 +160,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             int           received = 0;
             StreamEntry[] messages = await stream.ReadStreamGroupAsync(messageLimit * 2);
             received += messages.Length;
-            Assert.AreEqual(messagesProduced, received, "a100:");
+            Assert.AreEqual(messagesProduced, received, "B10:");
 
 
             // C. Acknowledge the Messages
@@ -167,19 +169,21 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
                 stream.AddPendingAcknowledgementAsync(streamEntry);
             }
 
-            Assert.AreEqual(messagesProduced, stream.StatisticPendingAcknowledgements, "A200:");
+            Assert.AreEqual(messagesProduced, stream.StatisticPendingAcknowledgements, "C10:");
             await stream.FlushPendingAcknowledgementsAsync();
 
 
-            Assert.AreEqual(0, stream.StatisticPendingAcknowledgements, "A210:");
+            Assert.AreEqual(0, stream.StatisticPendingAcknowledgements, "C20:");
 
 
             // D. Consume again  There should be no more pending messages
             StreamEntry[] noMessages = await stream.ReadStreamGroupAsync(messageLimit * 2);
-            Assert.AreEqual(0, noMessages.Length, "A300:");
+            Assert.AreEqual(0, noMessages.Length, "D10:");
 
-            StreamEntry[] noPendingMessage = await stream.ReadStreamGroupAsync(messageLimit * 2, true);
-            Assert.AreEqual(0, noPendingMessage.Length, "A310:");
+
+            // E. Read the stream again to acquire the pending messages
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit * 2);
+            Assert.AreEqual(0, claimed.ClaimedEntries.Length, "E10:");
         }
         catch (Exception e)
         {
@@ -250,8 +254,9 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             StreamEntry[] noMessages = await stream.ReadStreamGroupAsync(messageLimit * 2);
             Assert.AreEqual(0, noMessages.Length, "A300:");
 
-            StreamEntry[] noPendingMessage = await stream.ReadStreamGroupAsync(messageLimit * 2, true);
-            Assert.AreEqual(0, noPendingMessage.Length, "A310:");
+            // E. Read the stream again to acquire the pending messages
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit * 2);
+            Assert.AreEqual(0, claimed.ClaimedEntries.Length, "E10:");
         }
         catch (Exception e)
         {
@@ -306,10 +311,6 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // C. Consume again  There should be no Normal messages
             StreamEntry[] noMessages = await stream.ReadStreamGroupAsync(messageLimit * 2);
             Assert.AreEqual(0, noMessages.Length, "A300:");
-
-            // And no pending messages
-            StreamEntry[] noPendingMessage = await stream.ReadStreamGroupAsync(messageLimit * 2, true);
-            Assert.AreEqual(0, noPendingMessage.Length, "A310:");
         }
         catch (Exception e)
         {
@@ -488,7 +489,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(10),
             AcknowledgeOnDelivery  = false,
         };
 
@@ -534,12 +535,6 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // E. Test the GetApplicationPendingMessages method
             Assert.AreEqual(3, await consumers[0].GetApplicationPendingMessageCount(), "E10:");
             Assert.AreEqual(0, await consumers[1].GetApplicationPendingMessageCount(), "E20:");
-
-            // F. Get the pending messages.  We set auto acknowledge on so they are removed from the pending list.
-            consumers[0].AutoAcknowledgeMessagesOnDelivery = true;
-            messages                                       = await consumers[0].ReadStreamGroupAsync(messageLimit, true);
-            Assert.AreEqual(3, messages.Length, "F10:");
-            Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "F20:");
         }
         catch (Exception e)
         {
@@ -556,17 +551,21 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     }
 
 
-
+    /// <summary>
+    /// Validates that we 1) Can read pending messages, 2) When acknowledged they are removed from pending.
+    /// </summary>
+    /// <returns></returns>
     [Test]
     public async Task PendingMessages()
     {
-        SLRStream stream = null;
+        SLRStream stream    = null;
+        int       timeLimit = 5;
         SLRStreamConfig config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstPend"),
             ApplicationName        = _uniqueKeys.GetKey("AppPend"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(timeLimit),
             AcknowledgeOnDelivery  = false,
         };
 
@@ -594,10 +593,12 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // D. Now read the pending messages.  Should be same # as messages created
-            messages = await stream.ReadStreamGroupAsync(messageLimit, true);
-            Assert.AreEqual(messageLimit, messages.Length, "D10:");
+            Thread.Sleep(timeLimit + 1);
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit * 2);
+            Assert.AreEqual(messageLimit, claimed.ClaimedEntries.Length, "D10:");
 
             // E. Validate there are the required number of pending messages
+            Thread.Sleep(timeLimit);
             Assert.AreEqual(messageLimit, await stream.GetApplicationPendingMessageCount(), "E10:");
 
             // F. Acknowledge them
@@ -614,12 +615,13 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // Validate there are no more messages to be read from pending
-            messages = await stream.ReadStreamGroupAsync(messageLimit, true);
-            Assert.AreEqual(0, messages.Length, "G20:");
+            Thread.Sleep(timeLimit);
+            claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit * 2);
+            Assert.AreEqual(0, claimed.ClaimedEntries.Length, "G20:");
 
 
             // Validate there are no more messages to be read from normal
-            messages = await stream.ReadStreamGroupAsync(messageLimit, false);
+            messages = await stream.ReadStreamGroupAsync(messageLimit);
             Assert.AreEqual(0, messages.Length, "G30:");
         }
         catch (Exception e)
@@ -937,6 +939,213 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // Get Vitals
             vitals = await stream.GetStreamVitals();
             Assert.Less(vitals.StreamInfo.Length, origCount, "D410:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+
+    /// <summary>
+    /// Confirms that a consumer can take over a PEL from another consumer.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task ConsumerTakesOverPELOfAnotherConsumer()
+    {
+        SLRStream stream      = null;
+        int       pendingTime = 5;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(pendingTime),
+            AcknowledgeOnDelivery  = false,
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+
+            int messageLimit     = 10;
+            int messagesProduced = 0;
+            for (messagesProduced = 0; messagesProduced < messageLimit; messagesProduced++)
+            {
+                SLRMessage message = SLRMessage.CreateMessage($"i={messagesProduced}");
+                await stream.SendMessageAsync(message);
+            }
+
+
+            // B.  Create 3 consumers for the application
+            int             consumerCount = 3;
+            List<SLRStream> consumers     = new();
+            for (int i = 0; i < consumerCount; i++)
+            {
+                SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
+                consumers.Add(consumer);
+                Assert.IsNotNull(consumer, $"B10: Consumer: {consumer.ApplicationId}");
+            }
+
+
+            // C. Consume 2 messages for the first consumer so the Pending ack count goes up.
+            int           pendingCount = 2;
+            DateTime      startTime    = DateTime.Now;
+            StreamEntry[] messages     = await consumers[0].ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, messages.Length, "C10:");
+
+
+            // D. Test the GetApplicationPendingMessages method, All Consumers should show pending messages
+            Assert.AreEqual(pendingCount, await consumers[0].GetApplicationPendingMessageCount(), "D10:");
+            Assert.AreEqual(pendingCount, await consumers[1].GetApplicationPendingMessageCount(), "D20:");
+            Assert.AreEqual(pendingCount, await consumers[2].GetApplicationPendingMessageCount(), "D20:");
+
+
+            // E. Try to read the messages again, but do not acknowledge.  All should show pending = 2
+            Thread.Sleep(pendingTime);
+            StreamAutoClaimResult claimed = await consumers[0].ReadStreamGroupPendingMessagesAsync(pendingCount);
+
+            //StreamEntry[]         consumerMessagesPEL = await consumers[0].ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "E10:");
+            Assert.AreEqual(pendingCount, await consumers[0].GetApplicationPendingMessageCount(), "E20:");
+            Assert.AreEqual(pendingCount, await consumers[1].GetApplicationPendingMessageCount(), "E30:");
+            Assert.AreEqual(pendingCount, await consumers[2].GetApplicationPendingMessageCount(), "E40:");
+
+
+            // F. Now Consumer 2 should try and get the pending messages from consumer 1.  First attempt should return zero as they have not met the threshold yet
+            DateTime current = DateTime.Now;
+            TimeSpan diff    = current - startTime;
+
+            // Make sure we have not exceeded our time interval
+            Assert.Less(config.ClaimMessagesOlderThan, diff,
+                        "F05:  If this is consistently throwing you probably need to increase the config value timespan by more milliseconds");
+
+            int consumer1 = 1;
+            claimed = await consumers[consumer1].ReadStreamGroupPendingMessagesAsync(messageLimit);
+            Assert.IsEmpty(claimed.ClaimedEntries, "F10:");
+
+            // Try again
+            Thread.Sleep(21);
+            claimed = await consumers[consumer1].ReadStreamGroupPendingMessagesAsync(messageLimit);
+            Assert.AreEqual(SLRStream.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "F20:");
+            Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "F30:");
+
+
+            // G. Acknowledge the messages.  Should be no more pending.
+            foreach (StreamEntry streamEntry in claimed.ClaimedEntries)
+            {
+                await consumers[consumer1].AddPendingAcknowledgementAsync(streamEntry);
+            }
+
+            await consumers[consumer1].FlushPendingAcknowledgementsAsync();
+            Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "G10:");
+            Assert.AreEqual(0, await consumers[1].GetApplicationPendingMessageCount(), "G20:");
+            Assert.AreEqual(0, await consumers[2].GetApplicationPendingMessageCount(), "G30:");
+
+
+            // H.  Read 4 more messages, but 2 from consumer 1 and 2 from consumer 2.  DO NOT Acknowledge
+            messages = await consumers[consumer1].ReadStreamGroupAsync(pendingCount);
+            int           consumer2 = 2;
+            StreamEntry[] messages2 = await consumers[consumer2].ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, messages.Length, "H10:");
+            Assert.AreEqual(pendingCount, messages2.Length, "H20:");
+
+
+            // I.  None of them have been confirmed.  Pending count should be 4.
+            int totalPending = pendingCount * 2;
+            Assert.AreEqual(totalPending, await consumers[0].GetApplicationPendingMessageCount(), "I10:");
+            Assert.AreEqual(totalPending, await consumers[1].GetApplicationPendingMessageCount(), "I20:");
+            Assert.AreEqual(totalPending, await consumers[2].GetApplicationPendingMessageCount(), "I30:");
+
+
+            // J. Now consumer 0 should attempt to claim them.
+            Thread.Sleep(21);
+            claimed = await consumers[0].ReadStreamGroupPendingMessagesAsync(messageLimit);
+            Assert.AreEqual(SLRStream.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "J10:");
+            Assert.AreEqual(totalPending, claimed.ClaimedEntries.Length, "J20:");
+
+            // K. Acknowledge the messages.  Should be no more pending.
+            foreach (StreamEntry streamEntry in claimed.ClaimedEntries)
+            {
+                await consumers[consumer1].AddPendingAcknowledgementAsync(streamEntry);
+            }
+
+            await consumers[consumer1].FlushPendingAcknowledgementsAsync();
+            Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "K10:");
+            Assert.AreEqual(0, await consumers[1].GetApplicationPendingMessageCount(), "K20:");
+            Assert.AreEqual(0, await consumers[2].GetApplicationPendingMessageCount(), "K30:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+
+    /// <summary>
+    /// Confirms that a consumer can read its own PEL messages once the expiration has occurred.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task ConsumerCanReadOwnPELMessages()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(20),
+            AcknowledgeOnDelivery  = false,
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+
+            int messageLimit     = 10;
+            int messagesProduced = 0;
+            for (messagesProduced = 0; messagesProduced < messageLimit; messagesProduced++)
+            {
+                SLRMessage message = SLRMessage.CreateMessage($"i={messagesProduced}");
+                await stream.SendMessageAsync(message);
+            }
+
+            // B.  Now lets read the messages. No Acknowledgement
+            int           pendingCount = messageLimit;
+            StreamEntry[] messages     = await stream.ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, messages.Length, "B10:");
+
+            // C.  Sleep the required number of seconds
+            Thread.Sleep(21);
+            Assert.AreEqual(pendingCount, await stream.GetApplicationPendingMessageCount(), "C10:");
+
+            // D.  Now read the pending messages
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit);
+            Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "D10:");
         }
         catch (Exception e)
         {

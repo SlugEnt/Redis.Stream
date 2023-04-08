@@ -26,12 +26,6 @@ public class SLRStreamConfig
 
 
     /// <summary>
-    /// The Redis Connection Object.  This typically is set by the engine and does not need to be manually set.
-    /// </summary>
-    public ConnectionMultiplexer Multiplexer { get; set; }
-
-
-    /// <summary>
     /// Where should the stream start consuming messages from.
     /// </summary>
     public EnumSLRStreamStartingPoints StartingMessage { get; set; } = EnumSLRStreamStartingPoints.Now;
@@ -44,7 +38,7 @@ public class SLRStreamConfig
 
 
     /// <summary>
-    /// If true, the consumer group does not nee to be acknowledged, so it is auto acknowledged as soon as read / delivered to consumer.
+    /// If true, the consumer group does not need to be acknowledged, so it is auto acknowledged as soon as read / delivered to consumer.
     /// </summary>
     public bool AcknowledgeOnDelivery { get; set; }
 
