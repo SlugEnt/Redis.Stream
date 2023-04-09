@@ -4,6 +4,7 @@ using Spectre.Console;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -15,12 +16,14 @@ namespace SlugEnt.SLRStreamProcessing.Sample;
 
 public class MainMenu
 {
+    private          int              _performanceRuns = 100;
     private readonly ILogger          _logger;
     private          IServiceProvider _serviceProvider;
     private          bool             _started;
 
-    private ConnectionMultiplexer _redisMultiplexer;
-    private SLRStreamEngine       _redisStreamEngine;
+
+    private RedisConfiguration _redisConfiguration;
+    private SLRStreamEngine    _redisStreamEngine;
 
     //private DisplayFlightInfoStats _displayStats;
 
@@ -35,7 +38,7 @@ public class MainMenu
             throw new ApplicationException("Unable to build a RedisStreamEngine");
 
 
-        RedisConfiguration _redisConfiguration = new RedisConfiguration
+        _redisConfiguration = new RedisConfiguration
         {
             Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700,
         };
@@ -61,10 +64,11 @@ public class MainMenu
     internal async Task Start()
     {
         // TODO TEMPorary only
-        await ProcessStreams();
 
 
         bool keepProcessing = true;
+
+        _redisStreamEngine.Initialize(_redisConfiguration);
 
         // Initialize the Engines
         //await _flightInfoEngine.InitializeAsync();
@@ -101,11 +105,20 @@ public class MainMenu
 
             switch (keyInfo.Key)
             {
-                case ConsoleKey.T: break;
+                case ConsoleKey.T:
+                    await ProcessStreams();
+                    break;
 
-                case ConsoleKey.S: break;
+                case ConsoleKey.P:
+                    await PerformanceTestOfClaimPending();
+                    break;
 
                 case ConsoleKey.I:
+                    Console.WriteLine("Enter # of performance runs: ");
+                    string answer = Console.ReadLine();
+                    if (int.TryParse(answer, out int runs))
+                        _performanceRuns = runs;
+
 /*                    Console.WriteLine("Enter the number of minutes between flight creations");
                     string interval = Console.ReadLine();
                     if (int.TryParse(interval, out int secondInterval))
@@ -140,6 +153,66 @@ public class MainMenu
 
 
         return true;
+    }
+
+
+    internal async Task PerformanceTestOfClaimPending()
+    {
+        SLRStreamConfig config = new SLRStreamConfig()
+        {
+            StreamName                 = "BPerformance",
+            ApplicationName            = "testPerf",
+            StreamType                 = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            MaxPendingAcknowledgements = 25,
+            ClaimMessagesOlderThan     = TimeSpan.FromMilliseconds(50),
+        };
+
+
+        SLRStream streamA = await _redisStreamEngine.GetSLRStreamAsync(config);
+        config.StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
+        config.StreamName = "B";
+        SLRStream streamB = await _redisStreamEngine.GetSLRStreamAsync(config);
+
+
+        // Method 1:  Just call the get pending messages method.  When we call we do not know if there are any messages or not.
+        Stopwatch swA = Stopwatch.StartNew();
+        for (int i = 0; i < _performanceRuns; i++)
+        {
+            StreamAutoClaimResult claims = await streamA.ReadStreamGroupPendingMessagesAsync(10);
+            if (claims.ClaimedEntries.Length > 0)
+            {
+                int j = 0;
+            }
+        }
+
+        swA.Stop();
+        Console.WriteLine("Method 1 completed.");
+
+        // Method2:  Call method to see how many messages are pending.
+        Stopwatch swB = Stopwatch.StartNew();
+        for (int i = 0; i < _performanceRuns; i++)
+        {
+            long pending = await streamA.GetApplicationPendingMessageCount();
+            if (pending > 0)
+            {
+                int j = 0;
+            }
+        }
+
+        swB.Stop();
+
+        Console.WriteLine($"Ran both methods for {_performanceRuns} cycles");
+        Console.WriteLine($"Method 1: ReadStreamGroupPendingMessages Time: {swA.Elapsed.TotalSeconds}");
+        Console.WriteLine($"Method 2: GetApplicationPendingMessage   Time: {swB.Elapsed.TotalSeconds}");
+
+        if (swA.Elapsed < swB.Elapsed)
+        {
+            Console.WriteLine($"Method 1 Faster by {swB.Elapsed - swA.Elapsed} milliseconds");
+        }
+        else
+        {
+            Console.WriteLine($"Method 2 Faster by {swA.Elapsed - swB.Elapsed} milliseconds");
+        }
     }
 
 

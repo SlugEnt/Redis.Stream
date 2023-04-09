@@ -7,7 +7,7 @@
     <AssemblyName>SlugEnt.$(MSBuildProjectName)</AssemblyName>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <Title>Provides Enhanced Redis Stream Capabilities and Management</Title>
-    <Version>0.2.6.1</Version>
+    <Version>0.3.0.0</Version>
     <Authors>Scott Herrmann</Authors>
     <Company>SlugEnt</Company>
     <Description>Enhanced Redis Stream Library</Description>

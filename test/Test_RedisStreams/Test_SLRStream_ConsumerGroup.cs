@@ -453,7 +453,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // C. Get Group Info.  Should be 3 - the producer and the Odd  and Even groups
-            StreamGroupInfo[] groupInfo = await consumers[0].GetApplicationInfo();
+            StreamGroupInfo[] groupInfo = await consumers[0].GetStreamApplications();
             Assert.AreEqual(3, groupInfo.Length, "C10:");
 
 
@@ -528,7 +528,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // D. Get Group Info.  Should be 3 - the producer and the Odd  and Even groups
-            StreamGroupInfo[] groupInfo = await consumers[0].GetApplicationInfo();
+            StreamGroupInfo[] groupInfo = await consumers[0].GetStreamApplications();
             Assert.AreEqual(3, groupInfo.Length, "D10:");
 
 
@@ -687,7 +687,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // C. Get Group Info.  Should be 3 - the producer is not a consumer so should not be included
-            StreamGroupInfo[] groupInfo = await consumers[0].GetApplicationInfo();
+            StreamGroupInfo[] groupInfo = await consumers[0].GetStreamApplications();
             Assert.AreEqual(2, groupInfo.Length, "D10:");
         }
         catch (Exception e)
@@ -1146,6 +1146,318 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // D.  Now read the pending messages
             StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit);
             Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "D10:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task MessageRetryCountIncreases_ForMessagesRetried()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(10),
+            AcknowledgeOnDelivery  = false,
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+
+            int messageLimit     = 10;
+            int messagesProduced = 0;
+            for (messagesProduced = 0; messagesProduced < messageLimit; messagesProduced++)
+            {
+                SLRMessage message = SLRMessage.CreateMessage($"i={messagesProduced}");
+                await stream.SendMessageAsync(message);
+            }
+
+            // B.  Now lets read the messages. No Acknowledgement
+            int           pendingCount = messageLimit;
+            StreamEntry[] messages     = await stream.ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, messages.Length, "B10:");
+
+            // C.  Sleep the required number of seconds
+            Assert.AreEqual(pendingCount, await stream.GetApplicationPendingMessageCount(), "C10:");
+
+            // D.  Now read the pending messages
+            Thread.Sleep(21);
+            StreamAutoClaimResult claimed = await stream.ReadStreamGroupPendingMessagesAsync(messageLimit);
+            Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "D10:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Each consumer in a consumer group should get a unique consumer group ID.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task MultipleConsumers_GetUniqueApplicationID()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamD = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            Assert.AreEqual(1, stream.ApplicationId, "A10:");
+            Assert.AreEqual(2, streamB.ApplicationId, "A20:");
+            Assert.AreEqual(3, streamC.ApplicationId, "A30:");
+            Assert.AreEqual(4, streamD.ApplicationId, "A40:");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// When a stream is closed, its consumer ID is removed from Redis.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task DeleteConsumer(bool forceDeletion)
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0),
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            Assert.AreEqual(1, stream.ApplicationId, "A10:");
+            Assert.AreEqual(2, streamB.ApplicationId, "A20:");
+            Assert.AreEqual(3, streamC.ApplicationId, "A30:");
+
+
+            // B. Produce some messages
+            int messageLimit     = 10;
+            int messagesProduced = 0;
+            for (messagesProduced = 0; messagesProduced < messageLimit; messagesProduced++)
+            {
+                SLRMessage message = SLRMessage.CreateMessage($"i={messagesProduced}");
+                await stream.SendMessageAsync(message);
+            }
+
+            // B.  Now lets read the messages on Stream C
+            int           pendingCount = messageLimit;
+            StreamEntry[] messages     = await streamC.ReadStreamGroupAsync(pendingCount);
+            Assert.AreEqual(pendingCount, messages.Length, "B10:");
+
+
+            // C. Now Delete Consumer C
+            bool success = await streamB.DeleteConsumer(streamC.ApplicationId, forceDeletion);
+            if (forceDeletion)
+            {
+                Assert.IsTrue(success, "C10:  The consumer should have been deleted, even though it had pending messages.");
+                StreamConsumerInfo[] consumers = await streamB.GetConsumers();
+                string               appID     = streamC.ApplicationId.ToString();
+                foreach (StreamConsumerInfo streamConsumerInfo in consumers)
+                {
+                    Assert.AreNotEqual(streamConsumerInfo.Name, appID, "C20:");
+                }
+            }
+            else
+            {
+                Assert.IsFalse(success, "C20:  Consumer Deletion should have failed since there were pending messages");
+                long pendingStill = await streamB.GetApplicationPendingMessageCount();
+                Assert.AreEqual(pendingCount, pendingStill, "C30:");
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// When a stream is closed, its consumer ID is removed from Redis.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task CloseConsumer_RemovesConsumerId()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamD = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            Assert.AreEqual(1, stream.ApplicationId, "A10:");
+            Assert.AreEqual(2, streamB.ApplicationId, "A20:");
+            Assert.AreEqual(3, streamC.ApplicationId, "A30:");
+            Assert.AreEqual(4, streamD.ApplicationId, "A40:");
+
+
+            // B. Now close Consumer C
+            await streamC.CloseStream();
+            Assert.IsFalse(streamC.IsInitialized, "B10:");
+
+            // C. Make sure it is not in Redis any longer
+            string               appID     = streamC.ApplicationId.ToString();
+            StreamConsumerInfo[] consumers = await streamB.GetConsumers();
+            foreach (StreamConsumerInfo streamConsumerInfo in consumers)
+            {
+                Assert.AreNotEqual(streamConsumerInfo.Name, appID, "C10:");
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        finally
+        {
+            if (stream != null)
+            {
+                stream.DeleteStream();
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// When a stream is closed, its consumer ID is removed from Redis.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task DeleteAllConsumers_ApplicationStillExistsOnStream()
+    {
+        SLRStream stream = null;
+        SLRStreamConfig config = new()
+        {
+            StreamName             = _uniqueKeys.GetKey("TstCG"),
+            ApplicationName        = _uniqueKeys.GetKey("AppCG"),
+            StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0),
+        };
+
+        try
+        {
+            // A.  Produce
+            stream = await SetupTestProducer(config);
+
+            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+
+            Assert.AreEqual(1, stream.ApplicationId, "A10:");
+            Assert.AreEqual(2, streamB.ApplicationId, "A20:");
+            Assert.AreEqual(3, streamC.ApplicationId, "A30:");
+
+
+            StreamConsumerInfo[] consumers = await stream.GetConsumers();
+            Assert.AreEqual(3, consumers.Length, "A10:");
+
+
+            // B. Now Delete All Consumers
+            bool success = await streamB.DeleteConsumer(streamC.ApplicationId);
+            Assert.IsTrue(success, "B10:  The consumer should have been deleted");
+
+            success = await streamB.DeleteConsumer(streamB.ApplicationId);
+            Assert.IsTrue(success, "B20:  The consumer should have been deleted");
+
+            success = await stream.DeleteConsumer(stream.ApplicationId);
+            Assert.IsTrue(success, "B30:  The consumer should have been deleted");
+
+
+            // C. 
+            consumers = await stream.GetConsumers();
+            Assert.AreEqual(0, consumers.Length, "C10:");
+
+
+            // D. Make sure application info is still on stream
+            StreamGroupInfo[] apps = await stream.GetStreamApplications();
+            Assert.AreEqual(1, apps.Length, "D10:");
+            Assert.AreEqual(0, apps[0].ConsumerCount, "D20:");
+            Assert.AreEqual(stream.ApplicationName, apps[0].Name, "D30:");
         }
         catch (Exception e)
         {

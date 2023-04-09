@@ -95,7 +95,7 @@ public class SLRStreamVitals
             // Retrieve the individual pieces of info from Redis
             vitals.StreamInfo           = await theStream.GetStreamInfo();
             vitals.StreamExists         = true;
-            vitals.ApplicationsOnStream = await theStream.GetApplicationInfo();
+            vitals.ApplicationsOnStream = await theStream.GetStreamApplications();
             foreach (StreamGroupInfo streamGroupInfo in vitals.ApplicationsOnStream)
             {
                 if (streamGroupInfo.Name == theStream.ApplicationName)
@@ -107,7 +107,7 @@ public class SLRStreamVitals
 
 
             if (theStream.CanConsumeMessages)
-                vitals.ConsumerInfo = await theStream.GetConsumerInfo();
+                vitals.ConsumerInfo = await theStream.GetConsumers();
             else
                 vitals.ConsumerInfo = null;
 
@@ -163,6 +163,20 @@ public class SLRStreamVitals
                     lastDeliveredSequence = sequence;
             }
         }
+
+
+        // There are no messages in the stream
+        if (StreamInfo.FirstEntry.IsNull)
+        {
+            DateTime current = DateTime.Now;
+            OldestMessageId                      = SLRStream.STREAM_POSITION_BEGINNING;
+            OldestMessageDateTime                = current;
+            FirstFullyUnprocessedMessageDateTime = current;
+            FirstFullyUnprocessedMessageID       = SLRStream.STREAM_POSITION_BEGINNING;
+            LastUpdated                          = current;
+            return;
+        }
+
 
         //Get oldest message ID and time
         OldestMessageId   = StreamInfo.FirstEntry.Id;

@@ -149,10 +149,12 @@ public class SLRStream
                         if (!await TryCreateConsumerGroup())
                             throw new
                                 ApplicationException($"Failed to create the Consumer Group:  StreamName: {StreamName}   ApplicationName: {ApplicationName}");
-                        if (!await SetConsumerApplicationId())
-                            throw new
-                                ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
                     }
+
+                    // Create the actual Consumer ID
+                    if (!await SetConsumerApplicationId())
+                        throw new
+                            ApplicationException($"Failed to create the Consumer Application:  StreamName: {StreamName}   ApplicationConsumerName: {ApplicationFullName}");
                 }
             }
             catch (Exception ex)
@@ -210,7 +212,7 @@ public class SLRStream
             foreach (StreamConsumerInfo streamConsumerInfo in consumerInfo)
                 existingIds.Add(streamConsumerInfo.Name, streamConsumerInfo.Name);
 
-            for (int i = 0; i < 1000; i++)
+            for (int i = 1; i < 1000; i++)
             {
                 if (!existingIds.ContainsKey(i.ToString()))
                 {
@@ -393,6 +395,9 @@ public class SLRStream
     /// <param name="message"></param>
     public async Task SendMessageAsync(SLRMessage message)
     {
+        if (!IsInitialized)
+            throw new ApplicationException($"You must Initialize a SLRStream object before you can use it.  Stream Name: {StreamName}");
+
         if (!CanProduceMessages)
             throw new
                 ApplicationException("Attempted to send a message to a stream that you have NOT specified as a stream you can produce messages for with this application");
@@ -412,6 +417,9 @@ public class SLRStream
     /// <returns></returns>
     public async Task<StreamEntry[]> ReadStreamAsync(int numberOfMessagesToRetrieve = 6)
     {
+        if (!IsInitialized)
+            throw new ApplicationException($"You must Initialize a SLRStream object before you can use it.  Stream Name: {StreamName}");
+
         if (!CanConsumeMessages)
             throw new ApplicationException("Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application");
 
@@ -439,6 +447,8 @@ public class SLRStream
     /// <exception cref="ApplicationException"></exception>
     public async Task<StreamEntry[]> ReadStreamGroupAsync(int numberOfMessagesToRetrieve = 6) //(, bool readPendingMessages = false))
     {
+        if (!IsInitialized)
+            throw new ApplicationException($"You must Initialize a SLRStream object before you can use it.  Stream Name: {StreamName}");
         if (!CanConsumeMessages)
             throw new
                 ApplicationException($"Attempted to read messages on a stream that you have NOT specified as a consumable stream for this application.  StreamName: {StreamName}.");
@@ -577,11 +587,13 @@ public class SLRStream
 
     /// <summary>
     /// Returns the total number of messages pending for all the consumers of the Application group.
+    /// <para>Note:  This will return the total pending count.  It does not take into consideration message age or how long it has been pending.
+    /// If the message was delivered to a consumer it is included in this count.</para>
     /// </summary>
-    /// <returns></returns>
+    /// <returns>Total number of messages pending for this Application across all consumers that are a part of this application.</returns>
     public async Task<long> GetApplicationPendingMessageCount()
     {
-        StreamGroupInfo[] groups          = await GetApplicationInfo();
+        StreamGroupInfo[] groups          = await GetStreamApplications();
         long              pendingMessages = 0;
         foreach (StreamGroupInfo group in groups)
         {
@@ -605,19 +617,20 @@ public class SLRStream
     }
 
 
-    /// <summary>
-    /// Gets information about the groups in the stream
-    /// </summary>
-    /// <returns></returns>
-    public async Task<StreamGroupInfo[]> GetApplicationInfo() { return await _redisClient.Db0.Database.StreamGroupInfoAsync(StreamName); }
-
-
 
     /// <summary>
-    /// Returns information about the consumers in group.
+    /// Gets information about all the applications that process this stream.
     /// </summary>
     /// <returns></returns>
-    public async Task<StreamConsumerInfo[]> GetConsumerInfo()
+    public async Task<StreamGroupInfo[]> GetStreamApplications() { return await _redisClient.Db0.Database.StreamGroupInfoAsync(StreamName); }
+
+
+
+    /// <summary>
+    /// Returns information about all the consumers in the application group this stream is a part of.
+    /// </summary>
+    /// <returns></returns>
+    public async Task<StreamConsumerInfo[]> GetConsumers()
     {
         try
         {
@@ -636,8 +649,9 @@ public class SLRStream
     }
 
 
+
     /// <summary>
-    /// Returns vital statistics and information about the stream
+    /// Returns vital statistics and information about this stream
     /// </summary>
     /// <returns></returns>
     public async Task<SLRStreamVitals> GetStreamVitals()
@@ -649,17 +663,19 @@ public class SLRStream
 
 
     /// <summary>
-    /// Removes aproximately all messages with an id before the passed in value.  Redis will determine up to what ID less than requested ID will be deleted for optimization and speed reasons
+    /// Removes approximately or exactly all messages with an id before the passed in value.   For performance reasons it is best to let Redis determine the exact Id it deletes messages upto.
     /// <para>Thus, there may still exist some messages older than the messageIDToRemoveBefore value still present in DB</para>
     /// </summary>
     /// <param name="messageIDToRemoveBefore"></param>
+    /// <param name="optimized">If false, it will delete upto exactly the message Id provided.  If true, it will get close to that Id, whatever it determines is optimal and fastest.</param>
     /// <returns></returns>
-    public async Task<int> RemoveFullyProcessedEntries(RedisValue messageIDToRemoveBefore)
+    public async Task<int> RemoveFullyProcessedEntries(RedisValue messageIDToRemoveBefore, bool optimized = true)
     {
+        string       optimal    = optimized ? "~" : "=";
         List<string> xGroupArgs = new();
         xGroupArgs.Add(StreamName);
         xGroupArgs.Add("MINID");
-        xGroupArgs.Add("~");
+        xGroupArgs.Add(optimal);
         xGroupArgs.Add(messageIDToRemoveBefore);
         string      cmd    = $"XTRIM";
         RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
@@ -708,8 +724,67 @@ public class SLRStream
 
         RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
 
-        //long deleted = await _redisClient.Db0.Database.StreamDeleteAsync(StreamName, messageId);
         return (long)result;
+    }
+
+
+
+    /// <summary>
+    /// Removes this instances consumer ID from the consumer ID List
+    /// </summary>
+    /// <returns></returns>
+    public async Task CloseStream()
+    {
+        await DeleteConsumer(ApplicationId);
+        IsInitialized = false;
+    }
+
+
+
+    /// <summary>
+    /// Deletes the given consumer ID.  VERY IMPORTANT:  This will fail if it has any pending messages.  Set Force to True to force the consumer to be deleted.
+    /// Any Pending Messages will be lost forever.
+    /// <para>It is probably best to let the deleteConsumer fail and then allow another instance or a restart to then consume those messages before deleting the consumer.</para>
+    /// </summary>
+    /// <param name="consumerID">The consumer ID to delete</param>
+    /// <param name="forceDeletion">Use very cautiously.  If the consumer has pending messages they will be lost forever.</param>
+    /// <returns></returns>
+    public async Task<bool> DeleteConsumer(int consumerID, bool forceDeletion = false)
+    {
+        if (!IsConsumerGroup)
+            return true;
+
+        int pendingCount = 0;
+
+        // Need to see if the consumer has any pending messages. 
+        if (!forceDeletion)
+        {
+            StreamConsumerInfo[] consumers = await GetConsumers();
+            string               appId     = consumerID.ToString();
+            foreach (StreamConsumerInfo streamConsumerInfo in consumers)
+            {
+                if (streamConsumerInfo.Name == appId)
+                {
+                    pendingCount = streamConsumerInfo.PendingMessageCount;
+                    break;
+                }
+            }
+
+            if (pendingCount > 0)
+                return false;
+        }
+
+
+        List<string> xGroupArgs = new();
+        xGroupArgs.Add("DELCONSUMER");
+        xGroupArgs.Add(StreamName);
+        xGroupArgs.Add(ApplicationName);
+        xGroupArgs.Add(consumerID.ToString());
+        string cmd = $"XGROUP";
+
+        RedisResult result = await _redisClient.Db0.Database.ExecuteAsync(cmd, xGroupArgs.ToArray());
+
+        return true;
     }
 
 

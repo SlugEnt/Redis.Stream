@@ -180,6 +180,33 @@ Acknowledgement handling is set via the config file.  The default is Manual Ackn
 #### Handling failed acknowledgements.
 For messages that are manually acknowledged, Redis Streams puts the message into a pending entry list for the consumer that is receiving the message.  Other instances can then periodically check to see if there are any messages that are in the pending entry list for other consumers of the same consumer group.  If there are they can take ownership of them and try to process them themselves.
 
+There are 2 methods you can use to determine if there are pending messages.  Both methods are equally fast.  I have run performance runs of 100,000+ for each and they are both within a second of each other and sometimes one method wins and sometimes the other.  However, this only holds true if there are rarely actual pending messages (usually the case, but your mileage may vary).
+
+You can call ReadStreamGroupPendingMessagesAsync which you will have to do anyway if there are pending messages, so this is my recommendation as it eliminates some additional logic you have to handle and eliminates a second call to Redis.  Or you can call GetApplicationPendingMessageCount, to get the number of pending messages and then call ReadStreamGroupPendingMessagesAsync to retrieve them.
+
+```
+    StreamAutoClaimResult claims = await streamA.ReadStreamGroupPendingMessagesAsync(10);
+    if (claims.ClaimedEntries.Length > 0)
+    {
+        // Logic to process messages
+    }
+```
+
+
+#### Closing ConsumeGroup Streams
+It is highly advised to close ConsumerGroup Streams when you are done processing!  If you do not, then the list of consumers of a given application will continually grow.
+
+Note.  If a ConsumerGroup is closed by an instance, it will only be deleted (removed from the list of consumers for the appication) IF there are no pending messages for the consumer.  If there are pending messages, then the consumer is not deleted.  This allows other instances OR a restart of a new instance of the application to claim these messages and process them.
+
+Note:  When all consumers of a consumer group (Application) are closed the application information will remain available on the stream!  It's consumer count will be zero.
+
+
+#### Deleting a consumer
+You can force the deletion of a consumer by specifying its ConsumerID and the force flag.
+```
+    bool success = await streamB.DeleteConsumer(streamC.ApplicationId, forceDeletion);
+```
+
 
 ### SLRStreamEngine
 
