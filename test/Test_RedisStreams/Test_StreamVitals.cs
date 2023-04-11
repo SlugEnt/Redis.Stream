@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+﻿using SLRStreamProcessing;
 using SlugEnt.SLRStreamProcessing;
 using StackExchange.Redis;
 
@@ -12,18 +12,18 @@ public class Test_StreamVitals : SetupRedisConfiguration
 
 
     [Test]
-    public async Task ApplictionInfo()
+    public async Task ApplicationInfo()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndConsumerGroup
         };
 
         try
         {
             // Produce a few messages
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+            stream = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
             Assert.IsNotNull(stream, "A10:");
 
             int messagesProduced = 0;
@@ -39,7 +39,7 @@ public class Test_StreamVitals : SetupRedisConfiguration
             int received = 0;
             for (j = 0; j < messagesProduced / 2; j++)
             {
-                StreamEntry[] messages = await stream.ReadStreamAsync(1);
+                StreamEntry[] messages = await stream.ReadStreamGroupAsync(1);
                 if (messages.Length > 0)
                     Assert.AreEqual(1, messages.Length, "A20: Received more than the expected number of messages. Expected 1.");
                 received += messages.Length;
@@ -60,9 +60,7 @@ public class Test_StreamVitals : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 }

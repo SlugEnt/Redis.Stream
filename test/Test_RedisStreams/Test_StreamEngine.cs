@@ -1,7 +1,5 @@
-using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using SlugEnt.SLRStreamProcessing;
-using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 
 namespace Test_RedisStreams;
@@ -9,12 +7,6 @@ namespace Test_RedisStreams;
 [TestFixture]
 public class Tests
 {
-    private SLRStreamEngine    _slrStreamEngine;
-    private IServiceCollection _services;
-    private ServiceProvider    _serviceProvider;
-    private RedisConfiguration _configuration;
-
-
     [OneTimeSetUp]
     public void OneTimeSetup()
     {
@@ -26,7 +18,7 @@ public class Tests
 
         _configuration = new RedisConfiguration
         {
-            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700,
+            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700
         };
 
         // This is purely to validate we have a local Redis DB and that it is available.  If its not all tests will fail.
@@ -41,6 +33,12 @@ public class Tests
 
     [SetUp]
     public void Setup() { }
+
+
+    private SLRStreamEngine    _slrStreamEngine;
+    private IServiceCollection _services;
+    private ServiceProvider    _serviceProvider;
+    private RedisConfiguration _configuration;
 
 
     [Test]
@@ -98,10 +96,7 @@ public class Tests
         EnumSLRStreamTypes streamType  = EnumSLRStreamTypes.ProducerOnly;
 
         // We use the standard testing engine.
-        SLRStreamConfig config = new SLRStreamConfig()
-        {
-            StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
-        };
+        SLRStreamConfig config = new() { StreamName = streamName, ApplicationName = appName, StreamType = streamType };
 
         SLRStream producer = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(producer, "A10:");
@@ -109,7 +104,6 @@ public class Tests
         Assert.AreEqual(appName, producer.ApplicationName, "A20:");
         Assert.IsTrue(producer.CanProduceMessages, "A30:");
         Assert.IsFalse(producer.CanConsumeMessages, "A40:");
-        Assert.AreEqual(pendingAcks, producer.MaxPendingMessageAcknowledgements, "A50:");
     }
 
 
@@ -124,10 +118,7 @@ public class Tests
         EnumSLRStreamTypes streamType  = EnumSLRStreamTypes.SimpleConsumerOnly;
 
         // We use the standard testing engine.
-        SLRStreamConfig config = new SLRStreamConfig()
-        {
-            StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
-        };
+        SLRStreamConfig config = new() { StreamName = streamName, ApplicationName = appName, StreamType = streamType };
 
         SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(consumer, "A10:");
@@ -135,7 +126,6 @@ public class Tests
         Assert.AreEqual(appName, consumer.ApplicationName, "A20:");
         Assert.IsFalse(consumer.CanProduceMessages, "A30:");
         Assert.IsTrue(consumer.CanConsumeMessages, "A40:");
-        Assert.AreEqual(pendingAcks, consumer.MaxPendingMessageAcknowledgements, "A50:");
     }
 
 
@@ -150,10 +140,7 @@ public class Tests
         EnumSLRStreamTypes streamType  = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
 
         // We use the standard testing engine.
-        SLRStreamConfig config = new SLRStreamConfig()
-        {
-            StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
-        };
+        SLRStreamConfig config = new() { StreamName = streamName, ApplicationName = appName, StreamType = streamType };
 
         SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");
@@ -173,10 +160,7 @@ public class Tests
         EnumSLRStreamTypes streamType  = EnumSLRStreamTypes.ProducerAndConsumerGroup;
 
         // We use the standard testing engine.
-        SLRStreamConfig config = new SLRStreamConfig()
-        {
-            StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
-        };
+        SLRStreamConfig config = new() { StreamName = streamName, ApplicationName = appName, StreamType = streamType };
 
         SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");
@@ -197,10 +181,7 @@ public class Tests
         EnumSLRStreamTypes streamType  = EnumSLRStreamTypes.ConsumerGroupOnly;
 
         // We use the standard testing engine.
-        SLRStreamConfig config = new SLRStreamConfig()
-        {
-            StreamName = streamName, ApplicationName = appName, MaxPendingAcknowledgements = pendingAcks, StreamType = streamType,
-        };
+        SLRStreamConfig config = new() { StreamName = streamName, ApplicationName = appName, StreamType = streamType };
 
         SLRStream combo = await _slrStreamEngine.GetSLRStreamAsync(config);
         Assert.IsNotNull(combo, "A10:");

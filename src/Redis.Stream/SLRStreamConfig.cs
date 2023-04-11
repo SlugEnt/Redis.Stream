@@ -3,48 +3,29 @@
 namespace SlugEnt.SLRStreamProcessing;
 
 /// <summary>
-/// Provides the configuration for a stream
+///     Provides the configuration for a normal producer / consumer stream
 /// </summary>
 public class SLRStreamConfig
 {
-    public SLRStreamConfig() { }
-
-    public string StreamName { get; set; }
-
     public string ApplicationName { get; set; }
 
-    /// <summary>
-    /// The maximum number of allowed Pending Acknowledgements.  Once this value is hit an automatic sending of acknowledgements to server occurs.
-    /// </summary>
-    public int MaxPendingAcknowledgements { get; set; } = 20;
-
 
     /// <summary>
-    /// The type of stream this is - what it can do:  Produce, Consume, Both, Consume via Group
-    /// </summary>
-    public EnumSLRStreamTypes StreamType { get; set; }
-
-
-    /// <summary>
-    /// Where should the stream start consuming messages from.
+    ///     Where should the stream start consuming messages from.
     /// </summary>
     public EnumSLRStreamStartingPoints StartingMessage { get; set; } = EnumSLRStreamStartingPoints.Now;
 
 
     /// <summary>
-    /// This only applies if the StartingMessage is set to SpecifiedValue
+    ///     This only applies if the StartingMessage is set to SpecifiedValue
     /// </summary>
     public RedisValue StartingMessageId { get; set; }
 
-
-    /// <summary>
-    /// If true, the consumer group does not need to be acknowledged, so it is auto acknowledged as soon as read / delivered to consumer.
-    /// </summary>
-    public bool AcknowledgeOnDelivery { get; set; }
+    public string StreamName { get; set; }
 
 
     /// <summary>
-    /// The threshold for consuming a message from another consumer that has not acknowledged the message yet
+    ///     The type of stream this is - what it can do:  Produce, Consume, Both, Consume via Group
     /// </summary>
-    public TimeSpan ClaimMessagesOlderThan { get; set; } = TimeSpan.FromMinutes(1);
+    public EnumSLRStreamTypes StreamType { get; set; }
 }

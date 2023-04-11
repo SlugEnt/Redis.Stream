@@ -1,11 +1,6 @@
-﻿using System.Net;
-using ByteSizeLib;
-using Microsoft.Extensions.DependencyInjection;
-using NUnit.Framework;
+﻿using ByteSizeLib;
 using SlugEnt.SLRStreamProcessing;
-using SlugEnt;
 using StackExchange.Redis;
-using StackExchange.Redis.Extensions.Core.Configuration;
 
 namespace Test_RedisStreams;
 
@@ -17,7 +12,7 @@ public class Test_SLRStream : SetupRedisConfiguration
 
 
     /// <summary>
-    /// Confirm we can publish and consume messages individually
+    ///     Confirm we can publish and consume messages individually
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -26,7 +21,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -63,16 +58,14 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
 
     /// <summary>
-    /// Confirm we can read in batches and that only the number of messages produced is actually read.
+    ///     Confirm we can read in batches and that only the number of messages produced is actually read.
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -81,7 +74,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -120,15 +113,13 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Confirm that last message ID is set on read and = the last message in the messages Array
+    ///     Confirm that last message ID is set on read and = the last message in the messages Array
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -138,7 +129,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -181,15 +172,13 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Confirm we can publish and consume messages individually
+    ///     Confirm we can publish and consume messages individually
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -201,7 +190,7 @@ public class Test_SLRStream : SetupRedisConfiguration
             StreamName      = _uniqueKeys.GetKey("Tst"),
             ApplicationName = _uniqueKeys.GetKey("App"),
             StreamType      = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
-            StartingMessage = EnumSLRStreamStartingPoints.Now,
+            StartingMessage = EnumSLRStreamStartingPoints.Now
         };
 
         try
@@ -245,9 +234,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -258,7 +245,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -281,15 +268,13 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Confirm we can publish and consume messages individually
+    ///     Confirm we can publish and consume messages individually
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -298,7 +283,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -333,7 +318,7 @@ public class Test_SLRStream : SetupRedisConfiguration
                 received += messages.Length;
 
                 // Create a SLRMessage from the message
-                SLRMessage message = new SLRMessage(messages[j]);
+                SLRMessage message = new(messages[j]);
                 Assert.AreEqual(3, message.Properties.Count, "A100:");
 
                 string value = message.GetPropertyAsString(propName1);
@@ -352,9 +337,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -367,7 +350,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("TstExists"), ApplicationName = _uniqueKeys.GetKey("Exists"), StreamType = EnumSLRStreamTypes.ProducerOnly,
+            StreamName = _uniqueKeys.GetKey("TstExists"), ApplicationName = _uniqueKeys.GetKey("Exists"), StreamType = EnumSLRStreamTypes.ProducerOnly
         };
 
         try
@@ -394,9 +377,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -408,9 +389,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName      = _uniqueKeys.GetKey("TstExists"),
-            ApplicationName = _uniqueKeys.GetKey("Exists"),
-            StreamType      = EnumSLRStreamTypes.SimpleConsumerOnly,
+            StreamName = _uniqueKeys.GetKey("TstExists"), ApplicationName = _uniqueKeys.GetKey("Exists"), StreamType = EnumSLRStreamTypes.SimpleConsumerOnly
         };
 
         try
@@ -437,9 +416,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -452,7 +429,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         SLRStream stream = null;
         SLRStreamConfig config = new()
         {
-            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer,
+            StreamName = _uniqueKeys.GetKey("Tst"), ApplicationName = _uniqueKeys.GetKey("App"), StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer
         };
 
         try
@@ -467,9 +444,7 @@ public class Test_SLRStream : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 }

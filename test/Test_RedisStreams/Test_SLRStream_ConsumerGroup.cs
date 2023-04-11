@@ -1,18 +1,11 @@
-﻿using System.Net;
-using Microsoft.Extensions.DependencyInjection;
-using NUnit.Framework;
+﻿using SLRStreamProcessing;
 using SlugEnt.SLRStreamProcessing;
-using SlugEnt;
 using StackExchange.Redis;
-using StackExchange.Redis.Extensions.Core.Configuration;
-using System.IO;
-using NUnit.Framework.Constraints;
-using NUnit.Framework.Interfaces;
 
 namespace Test_RedisStreams;
 
 [TestFixture]
-public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
+public class Test_SLRStreamAppGroup_ConsumerGroup : SetupRedisConfiguration
 {
     [OneTimeSetUp]
     public void OneTimeSetup() { Initialize(); }
@@ -23,17 +16,17 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ReadMessagesNoAck()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName      = _uniqueKeys.GetKey("TstCG"),
             ApplicationName = _uniqueKeys.GetKey("AppCG"),
-            StreamType      = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            StreamType      = EnumSLRStreamTypes.ProducerAndConsumerGroup
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 5;
@@ -65,9 +58,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -77,18 +68,18 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ReadMessagesNoAck_RereadWithPending_Success()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.Zero,
+            ClaimMessagesOlderThan = TimeSpan.Zero
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
             int messageLimit     = 5;
             int messagesProduced = 0;
@@ -124,9 +115,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -135,17 +124,17 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ReadMessages_WithManualAck()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName      = _uniqueKeys.GetKey("TstCG"),
             ApplicationName = _uniqueKeys.GetKey("AppCG"),
-            StreamType      = EnumSLRStreamTypes.ProducerAndConsumerGroup,
+            StreamType      = EnumSLRStreamTypes.ProducerAndConsumerGroup
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
             int messageLimit     = 5;
             int messagesProduced = 0;
@@ -165,9 +154,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // C. Acknowledge the Messages
             foreach (StreamEntry streamEntry in messages)
-            {
                 stream.AddPendingAcknowledgementAsync(streamEntry);
-            }
 
             Assert.AreEqual(messagesProduced, stream.StatisticPendingAcknowledgements, "C10:");
             await stream.FlushPendingAcknowledgementsAsync();
@@ -193,9 +180,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -205,19 +190,19 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ReadMessages_WithManualAckExceedsMaxLimit()
     {
-        SLRStream stream                = null;
-        int       autoFlushMessageLimit = 5;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream                = null;
+        int               autoFlushMessageLimit = 5;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName                 = _uniqueKeys.GetKey("TstCG"),
             ApplicationName            = _uniqueKeys.GetKey("AppCG"),
             StreamType                 = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            MaxPendingAcknowledgements = autoFlushMessageLimit,
+            MaxPendingAcknowledgements = autoFlushMessageLimit
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 8;
@@ -238,9 +223,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // C. Acknowledge the Messages
             foreach (StreamEntry streamEntry in messages)
-            {
                 await stream.AddPendingAcknowledgementAsync(streamEntry);
-            }
 
             Assert.AreEqual(1, stream.StatisticFlushedMessageCalls, "A200:");
             int remainingMessages = messageLimit - autoFlushMessageLimit;
@@ -266,9 +249,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -278,18 +259,18 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ReadMessages_WithAutomaticAck()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName            = _uniqueKeys.GetKey("TstCG"),
             ApplicationName       = _uniqueKeys.GetKey("AppCG"),
             StreamType            = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            AcknowledgeOnDelivery = true,
+            AcknowledgeOnDelivery = true
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 5;
@@ -320,9 +301,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -332,19 +311,19 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task ClaimMessagesFromDeadConsumer()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
             int messageLimit     = 6;
             int messagesProduced = 0;
@@ -356,9 +335,9 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // B.  Create 2 consumers.
-            SLRStream consumerA = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup consumerA = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
             Assert.IsNotNull(consumerA, "B10:");
-            SLRStream consumerB = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup consumerB = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
             Assert.IsNotNull(consumerB, "B20:");
 
 
@@ -381,13 +360,11 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // E. Confirm we can claim 3 messages from consumerB.
             StreamPendingMessageInfo[] pendingMessageInfoA = await consumerB.GetPendingMessageInfo();
-            StreamEntry[]              claimedMessages     = await consumerB.ClaimPendingMessagesAsync(3, SLRStream.STREAM_POSITION_BEGINNING);
+            StreamEntry[]              claimedMessages     = await consumerB.ClaimPendingMessagesAsync(3, SLRStreamBase.STREAM_POSITION_BEGINNING);
             Assert.AreEqual(3, claimedMessages.Length, "E10:");
 
             foreach (StreamEntry message in claimedMessages)
-            {
                 await consumerB.AddPendingAcknowledgementAsync(message);
-            }
 
             Assert.AreEqual(loopMax, consumerB.StatisticPendingAcknowledgements, "E20:");
             await consumerB.FlushPendingAcknowledgementsAsync();
@@ -405,9 +382,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -415,19 +390,19 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task GetConsumerInfo()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
             int messageLimit     = 3;
             int messagesProduced = 0;
@@ -439,14 +414,14 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // B.  Create 4 consumers in 2 groups - Odd / Even
-            string          group         = "odd";
-            int             consumerCount = 4;
-            List<SLRStream> consumers     = new();
+            string                  group         = "odd";
+            int                     consumerCount = 4;
+            List<SLRStreamAppGroup> consumers     = new();
             for (int i = 0; i < consumerCount; i++)
             {
                 group                  = i % 2 == 0 ? "Even" : "Odd";
                 config.ApplicationName = group;
-                SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
+                SLRStreamAppGroup consumer = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
                 consumers.Add(consumer);
                 Assert.IsNotNull(consumer, $"B10: Consumer: {consumer.ApplicationId}");
             }
@@ -468,35 +443,33 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
 
     /// <summary>
-    /// Validates the PendingMessage GetPendingMessage count method works correctly
+    ///     Validates the PendingMessage GetPendingMessage count method works correctly
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task GetPendingMessageCountForGroup()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(10),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 3;
@@ -509,14 +482,14 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // B.  Create 4 consumers in 2 groups - Odd / Even
-            string          group         = "odd";
-            int             consumerCount = 4;
-            List<SLRStream> consumers     = new();
+            string                  group         = "odd";
+            int                     consumerCount = 4;
+            List<SLRStreamAppGroup> consumers     = new();
             for (int i = 0; i < consumerCount; i++)
             {
                 group                  = i % 2 == 0 ? "Even" : "Odd";
                 config.ApplicationName = group;
-                SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
+                SLRStreamAppGroup consumer = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
                 consumers.Add(consumer);
                 Assert.IsNotNull(consumer, $"B10: Consumer: {consumer.ApplicationId}");
             }
@@ -544,35 +517,33 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Validates that we 1) Can read pending messages, 2) When acknowledged they are removed from pending.
+    ///     Validates that we 1) Can read pending messages, 2) When acknowledged they are removed from pending.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task PendingMessages()
     {
-        SLRStream stream    = null;
-        int       timeLimit = 5;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream    = null;
+        int               timeLimit = 5;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstPend"),
             ApplicationName        = _uniqueKeys.GetKey("AppPend"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(timeLimit),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
             int messageLimit     = 6;
             int messagesProduced = 0;
@@ -603,9 +574,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // F. Acknowledge them
             foreach (StreamEntry streamEntry in messages)
-            {
                 await stream.AddPendingAcknowledgementAsync(streamEntry);
-            }
 
             await stream.FlushPendingAcknowledgementsAsync();
 
@@ -632,34 +601,32 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Producers that do not have a consumer component should not be part of consuemr group info.
+    ///     Producers that do not have a consumer component should not be part of consuemr group info.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task Producer_IsNotPartOfConsumerGroup()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerOnly,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+            stream = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
             Assert.IsNotNull(stream, "A10:");
 
             int messageLimit     = 3;
@@ -672,15 +639,15 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // B.  Create 4 consumers in 2 groups - Odd / Even
-            string          group         = "odd";
-            int             consumerCount = 4;
-            List<SLRStream> consumers     = new();
+            string                  group         = "odd";
+            int                     consumerCount = 4;
+            List<SLRStreamAppGroup> consumers     = new();
             config.StreamType = EnumSLRStreamTypes.ConsumerGroupOnly;
             for (int i = 0; i < consumerCount; i++)
             {
                 group                  = i % 2 == 0 ? "Even" : "Odd";
                 config.ApplicationName = group;
-                SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
+                SLRStreamAppGroup consumer = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
                 consumers.Add(consumer);
                 Assert.IsNotNull(consumer, $"B10: Consumer: {consumer.ApplicationId}");
             }
@@ -698,9 +665,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
@@ -710,13 +675,13 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [Test]
     public async Task GetStreamVitals_Success()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName            = _uniqueKeys.GetKey("TstCG"),
             ApplicationName       = _uniqueKeys.GetKey("AppCG"),
             StreamType            = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            AcknowledgeOnDelivery = true,
+            AcknowledgeOnDelivery = true
         };
 
         try
@@ -726,7 +691,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // A.  Produce
-            stream = await _slrStreamEngine.GetSLRStreamAsync(config);
+            stream = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
             Assert.IsNotNull(stream, "A10:");
 
             int messageLimit     = 60;
@@ -741,7 +706,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // B.  Build Consumers
             config.StreamType = EnumSLRStreamTypes.ConsumerGroupOnly;
-            List<SLRStream> streams = new();
+            List<SLRStreamAppGroup> streams = new();
 
             // Add the initial producer / Consumer stream
             streams.Add(stream);
@@ -752,20 +717,20 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             int consumersPerGroup = 3;
             for (int i = 0; i < groups; i++)
             {
-                string appName = "Group_" + (i + 1).ToString();
+                string appName = "Group_" + (i + 1);
                 config.ApplicationName = appName;
 
                 // Build consumers
                 for (int j = 0; j < consumersPerGroup; j++)
                 {
                     //string consumerName = "Consumer_" + (i+1) + "_" + (j + 1).ToString();
-                    SLRStream newStream = await _slrStreamEngine.GetSLRStreamAsync(config);
+                    SLRStreamAppGroup newStream = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
                     streams.Add(newStream);
                 }
             }
 
             // Add in the consumer for the producer group
-            int totalConsumers = (consumersPerGroup * groups) + 1;
+            int totalConsumers = consumersPerGroup * groups + 1;
 
 
             // C. Now we consume various messages via each consumer.
@@ -784,43 +749,43 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             int loopCtr           = 0;
 
             // Note that the messages retrieved is per Group.  
-            foreach (SLRStream slrStream in streams)
+            foreach (SLRStreamAppGroup SLRStreamAppGroup in streams)
             {
                 switch (loopCtr)
                 {
                     // Group 1
                     case 0:
-                        messages = await slrStream.ReadStreamGroupAsync(messageLimit);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(messageLimit);
                         break;
 
                     // Group "2"
                     case 1:
-                        messages = await slrStream.ReadStreamGroupAsync(10);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(10);
                         break;
 
                     // Group "2"
                     case 2:
-                        messages = await slrStream.ReadStreamGroupAsync(15);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(15);
                         break;
 
                     // Group "2"
                     case 3:
-                        messages = await slrStream.ReadStreamGroupAsync(17);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(17);
                         break;
 
                     // Group "3"
                     case 4:
-                        messages = await slrStream.ReadStreamGroupAsync(7);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(7);
                         break;
 
                     // Group "3"
                     case 5:
-                        messages = await slrStream.ReadStreamGroupAsync(10);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(10);
                         break;
 
                     // Group "3"
                     case 6:
-                        messages = await slrStream.ReadStreamGroupAsync(13);
+                        messages = await SLRStreamAppGroup.ReadStreamGroupAsync(13);
                         break;
                     default:
                         messages = new StreamEntry[0];
@@ -861,19 +826,26 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // E.  Lets validate some info 
             // Group 2's last processed message ID should be: 42
-            Assert.IsTrue(readList[41].GetStatus(3), "E500:");
-            Assert.IsFalse(readList[42].GetStatus(3), "E510:");
+            Assert.IsTrue(readList[41].GetStatus(3), "E10:");
+            Assert.IsFalse(readList[42].GetStatus(3), "E20:");
 
             // Group 3's Last process message ID should be: 30
-            Assert.IsTrue(readList[29].GetStatus(6), "E520:");
-            Assert.IsFalse(readList[30].GetStatus(6), "E530:");
+            Assert.IsTrue(readList[29].GetStatus(6), "E30:");
+            Assert.IsFalse(readList[30].GetStatus(6), "E40:");
 
 
             // Last Fully Processed Message should be Group 3's
             Assert.AreEqual(readList[29].MessageId, vitals.FirstFullyUnprocessedMessageID);
+            RedisValue oldest = readList[29].MessageId;
 
             // First Message
-            Assert.AreEqual(readList[0].MessageId, vitals.OldestMessageId);
+            Assert.AreEqual(readList[0].MessageId, vitals.OldestMessageId, "E50:");
+
+
+            // F.  Remove old messages that have been processed.
+            await stream.RemoveMessagesFullyProcessed(false);
+            vitals = await stream.GetStreamVitals();
+            Assert.AreEqual(vitals.OldestMessageId, oldest, "F10:");
         }
         catch (Exception e)
         {
@@ -883,30 +855,30 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
+    /// <summary>
+    ///     Removes messages - no regard as to whether processed by all apps or not.
+    /// </summary>
+    /// <returns></returns>
     [Test]
-
-    //[Repeat(20)]
     public async Task RemoveMessages()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName            = _uniqueKeys.GetKey("TstTrim"),
             ApplicationName       = _uniqueKeys.GetKey("RemoveMsg"),
             StreamType            = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            AcknowledgeOnDelivery = true,
+            AcknowledgeOnDelivery = true
         };
 
         try
         {
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             // Need to produce a lot of message to ensure we have some to delete.
@@ -932,7 +904,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
             // D. Delete first X messages
             int suggestedDeleteNumber = 300;
-            int delectedCount         = await stream.RemoveFullyProcessedEntries(messages[suggestedDeleteNumber].Id);
+            int delectedCount         = await stream.RemoveMessages(messages[suggestedDeleteNumber].Id);
             Assert.AreEqual(suggestedDeleteNumber, delectedCount, "D400:");
 
 
@@ -948,36 +920,34 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
 
     /// <summary>
-    /// Confirms that a consumer can take over a PEL from another consumer.
+    ///     Confirms that a consumer can take over a PEL from another consumer.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task ConsumerTakesOverPELOfAnotherConsumer()
     {
-        SLRStream stream      = null;
-        int       pendingTime = 5;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream      = null;
+        int               pendingTime = 5;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(pendingTime),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 10;
@@ -990,11 +960,11 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
 
 
             // B.  Create 3 consumers for the application
-            int             consumerCount = 3;
-            List<SLRStream> consumers     = new();
+            int                     consumerCount = 3;
+            List<SLRStreamAppGroup> consumers     = new();
             for (int i = 0; i < consumerCount; i++)
             {
-                SLRStream consumer = await _slrStreamEngine.GetSLRStreamAsync(config);
+                SLRStreamAppGroup consumer = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
                 consumers.Add(consumer);
                 Assert.IsNotNull(consumer, $"B10: Consumer: {consumer.ApplicationId}");
             }
@@ -1039,15 +1009,13 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // Try again
             Thread.Sleep(21);
             claimed = await consumers[consumer1].ReadStreamGroupPendingMessagesAsync(messageLimit);
-            Assert.AreEqual(SLRStream.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "F20:");
+            Assert.AreEqual(SLRStreamBase.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "F20:");
             Assert.AreEqual(pendingCount, claimed.ClaimedEntries.Length, "F30:");
 
 
             // G. Acknowledge the messages.  Should be no more pending.
             foreach (StreamEntry streamEntry in claimed.ClaimedEntries)
-            {
                 await consumers[consumer1].AddPendingAcknowledgementAsync(streamEntry);
-            }
 
             await consumers[consumer1].FlushPendingAcknowledgementsAsync();
             Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "G10:");
@@ -1073,14 +1041,12 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             // J. Now consumer 0 should attempt to claim them.
             Thread.Sleep(21);
             claimed = await consumers[0].ReadStreamGroupPendingMessagesAsync(messageLimit);
-            Assert.AreEqual(SLRStream.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "J10:");
+            Assert.AreEqual(SLRStreamBase.STREAM_POSITION_BEGINNING, claimed.NextStartId.ToString(), "J10:");
             Assert.AreEqual(totalPending, claimed.ClaimedEntries.Length, "J20:");
 
             // K. Acknowledge the messages.  Should be no more pending.
             foreach (StreamEntry streamEntry in claimed.ClaimedEntries)
-            {
                 await consumers[consumer1].AddPendingAcknowledgementAsync(streamEntry);
-            }
 
             await consumers[consumer1].FlushPendingAcknowledgementsAsync();
             Assert.AreEqual(0, await consumers[0].GetApplicationPendingMessageCount(), "K10:");
@@ -1095,35 +1061,33 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
 
     /// <summary>
-    /// Confirms that a consumer can read its own PEL messages once the expiration has occurred.
+    ///     Confirms that a consumer can read its own PEL messages once the expiration has occurred.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task ConsumerCanReadOwnPELMessages()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(20),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 10;
@@ -1155,34 +1119,31 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// 
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task MessageRetryCountIncreases_ForMessagesRetried()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
             ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(10),
-            AcknowledgeOnDelivery  = false,
+            AcknowledgeOnDelivery  = false
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
 
             int messageLimit     = 10;
@@ -1214,37 +1175,35 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// Each consumer in a consumer group should get a unique consumer group ID.
+    ///     Each consumer in a consumer group should get a unique consumer group ID.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task MultipleConsumers_GetUniqueApplicationID()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
-            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamD = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup streamB = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamC = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamD = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
 
             Assert.AreEqual(1, stream.ApplicationId, "A10:");
             Assert.AreEqual(2, streamB.ApplicationId, "A20:");
@@ -1259,15 +1218,13 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// When a stream is closed, its consumer ID is removed from Redis.
+    ///     When a stream is closed, its consumer ID is removed from Redis.
     /// </summary>
     /// <returns></returns>
     [Test]
@@ -1275,22 +1232,22 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
     [TestCase(false)]
     public async Task DeleteConsumer(bool forceDeletion)
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
-            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup streamB = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamC = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
 
             Assert.AreEqual(1, stream.ApplicationId, "A10:");
             Assert.AreEqual(2, streamB.ApplicationId, "A20:");
@@ -1320,9 +1277,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
                 StreamConsumerInfo[] consumers = await streamB.GetConsumers();
                 string               appID     = streamC.ApplicationId.ToString();
                 foreach (StreamConsumerInfo streamConsumerInfo in consumers)
-                {
                     Assert.AreNotEqual(streamConsumerInfo.Name, appID, "C20:");
-                }
             }
             else
             {
@@ -1339,37 +1294,35 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// When a stream is closed, its consumer ID is removed from Redis.
+    ///     When a stream is closed, its consumer ID is removed from Redis.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task CloseConsumer_RemovesConsumerId()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(50)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
-            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamD = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup streamB = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamC = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamD = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
 
             Assert.AreEqual(1, stream.ApplicationId, "A10:");
             Assert.AreEqual(2, streamB.ApplicationId, "A20:");
@@ -1385,9 +1338,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
             string               appID     = streamC.ApplicationId.ToString();
             StreamConsumerInfo[] consumers = await streamB.GetConsumers();
             foreach (StreamConsumerInfo streamConsumerInfo in consumers)
-            {
                 Assert.AreNotEqual(streamConsumerInfo.Name, appID, "C10:");
-            }
         }
         catch (Exception e)
         {
@@ -1397,36 +1348,34 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 
 
     /// <summary>
-    /// When a stream is closed, its consumer ID is removed from Redis.
+    ///     When a stream is closed, its consumer ID is removed from Redis.
     /// </summary>
     /// <returns></returns>
     [Test]
     public async Task DeleteAllConsumers_ApplicationStillExistsOnStream()
     {
-        SLRStream stream = null;
-        SLRStreamConfig config = new()
+        SLRStreamAppGroup stream = null;
+        SLRStreamConfigAppGroup config = new()
         {
             StreamName             = _uniqueKeys.GetKey("TstCG"),
             ApplicationName        = _uniqueKeys.GetKey("AppCG"),
             StreamType             = EnumSLRStreamTypes.ProducerAndConsumerGroup,
-            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0),
+            ClaimMessagesOlderThan = TimeSpan.FromMilliseconds(0)
         };
 
         try
         {
             // A.  Produce
-            stream = await SetupTestProducer(config);
+            stream = await SetupTestProducerAppGroup(config);
 
-            SLRStream streamB = await _slrStreamEngine.GetSLRStreamAsync(config);
-            SLRStream streamC = await _slrStreamEngine.GetSLRStreamAsync(config);
+            SLRStreamAppGroup streamB = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+            SLRStreamAppGroup streamC = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
 
             Assert.AreEqual(1, stream.ApplicationId, "A10:");
             Assert.AreEqual(2, streamB.ApplicationId, "A20:");
@@ -1467,9 +1416,7 @@ public class Test_SLRStream_ConsumerGroup : SetupRedisConfiguration
         finally
         {
             if (stream != null)
-            {
                 stream.DeleteStream();
-            }
         }
     }
 }

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using SLRStreamProcessing;
 using StackExchange.Redis.Extensions.Core.Configuration;
 
 
@@ -158,7 +159,7 @@ public class MainMenu
 
     internal async Task PerformanceTestOfClaimPending()
     {
-        SLRStreamConfig config = new SLRStreamConfig()
+        SLRStreamConfigAppGroup config = new SLRStreamConfigAppGroup()
         {
             StreamName                 = "BPerformance",
             ApplicationName            = "testPerf",
@@ -168,10 +169,10 @@ public class MainMenu
         };
 
 
-        SLRStream streamA = await _redisStreamEngine.GetSLRStreamAsync(config);
+        SLRStreamAppGroup streamA = await _redisStreamEngine.GetSLRStreamAppGroupAsync(config);
         config.StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
         config.StreamName = "B";
-        SLRStream streamB = await _redisStreamEngine.GetSLRStreamAsync(config);
+        SLRStreamAppGroup streamB = await _redisStreamEngine.GetSLRStreamAppGroupAsync(config);
 
 
         // Method 1:  Just call the get pending messages method.  When we call we do not know if there are any messages or not.
@@ -218,17 +219,17 @@ public class MainMenu
 
     internal async Task ProcessStreams()
     {
-        SLRStreamConfig config = new SLRStreamConfig()
+        SLRStreamConfigAppGroup config = new SLRStreamConfigAppGroup()
         {
             StreamName = "A", ApplicationName = "testProgram", StreamType = EnumSLRStreamTypes.ProducerAndConsumerGroup, MaxPendingAcknowledgements = 25,
         };
 
-        SLRStream streamA = await _redisStreamEngine.GetSLRStreamAsync(config);
+        SLRStreamAppGroup streamA = await _redisStreamEngine.GetSLRStreamAppGroupAsync(config);
         config.StreamType = EnumSLRStreamTypes.ProducerAndSimpleConsumer;
         config.StreamName = "B";
-        SLRStream streamB = await _redisStreamEngine.GetSLRStreamAsync(config);
+        SLRStreamAppGroup streamB = await _redisStreamEngine.GetSLRStreamAppGroupAsync(config);
         config.StreamName = "C";
-        SLRStream streamC = await _redisStreamEngine.GetSLRStreamAsync(config);
+        SLRStreamAppGroup streamC = await _redisStreamEngine.GetSLRStreamAppGroupAsync(config);
 
 
         //       streamA.DeleteStream();

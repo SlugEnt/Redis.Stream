@@ -1,5 +1,4 @@
-﻿using NUnit.Framework;
-using SlugEnt.SLRStreamProcessing;
+﻿using SlugEnt.SLRStreamProcessing;
 
 namespace Test_RedisStreams;
 
@@ -12,7 +11,7 @@ public class Test_SLRMessage
         string propName  = "UserName";
         string propValue = "Fred Flinstone";
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         string retValue = message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -25,7 +24,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         int    propValue = 54;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         int retValue = (int)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -39,7 +38,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         long   propValue = long.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         long retValue = (long)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -53,7 +52,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         ulong  propValue = ulong.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         ulong retValue = (ulong)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -66,7 +65,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         short  propValue = short.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         short retValue = (short)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -80,7 +79,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         uint   propValue = uint.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         uint retValue = (uint)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -94,7 +93,7 @@ public class Test_SLRMessage
         string propName  = "UserAge";
         double propValue = double.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
         double retValue = (double)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
@@ -106,11 +105,11 @@ public class Test_SLRMessage
     public void Single_Property()
     {
         string propName  = "UserAge";
-        Single propValue = Single.MaxValue;
+        float  propValue = float.MaxValue;
 
-        SLRMessage message = new SLRMessage();
+        SLRMessage message = new();
         message.AddProperty(propName, propValue);
-        Single retValue = (Single)message.GetProperty(propName);
+        float retValue = (float)message.GetProperty(propName);
         Assert.AreEqual(propValue, retValue, "A10:");
     }
 
@@ -123,8 +122,8 @@ public class Test_SLRMessage
         uint       age      = 54;
         UserSample user     = new(name, password, age);
 
-        SLRMessage message = new SLRMessage();
-        message.AddPropertyObject<UserSample>("User", user);
+        SLRMessage message = new();
+        message.AddPropertyObject("User", user);
 
         UserSample desUser = message.GetPropertyObject<UserSample>("User");
         Assert.AreEqual(age, desUser.Age, "A10");
@@ -153,7 +152,7 @@ public class Test_SLRMessage
         uint       age      = 54;
         UserSample user     = new(name, password, age);
 
-        SLRMessage message = SLRMessage.CreateMessage<UserSample>(user);
+        SLRMessage message = SLRMessage.CreateMessage(user);
         Assert.IsFalse(message.IsTextualMessage, "A10:");
         Assert.IsTrue(message.IsObjectEncodedMessage, "A20:");
         Assert.IsFalse(message.IsGenericMessage, "A30:");

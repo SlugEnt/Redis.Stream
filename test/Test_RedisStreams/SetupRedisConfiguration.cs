@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using SLRStreamProcessing;
 using SlugEnt;
 using SlugEnt.SLRStreamProcessing;
 using StackExchange.Redis;
@@ -8,10 +9,10 @@ namespace Test_RedisStreams;
 
 public class SetupRedisConfiguration
 {
-    protected SLRStreamEngine    _slrStreamEngine;
-    protected IServiceCollection _services;
-    protected ServiceProvider    _serviceProvider;
     protected RedisConfiguration _redisConfiguration;
+    protected ServiceProvider    _serviceProvider;
+    protected IServiceCollection _services;
+    protected SLRStreamEngine    _slrStreamEngine;
     protected UniqueKeys         _uniqueKeys;
 
 
@@ -20,6 +21,7 @@ public class SetupRedisConfiguration
         _services = new ServiceCollection().AddLogging();
         _services.AddTransient<SLRStreamEngine>();
         _services.AddTransient<SLRStream>();
+        _services.AddTransient<SLRStreamAppGroup>();
         _serviceProvider = _services.BuildServiceProvider();
 
 
@@ -28,7 +30,7 @@ public class SetupRedisConfiguration
         // If you set a thread.sleep(1) then it all works fine.  Or set PoolSize to 1 and it will work.  This just proves the ConnectionPooling is actually doing something.
         _redisConfiguration = new RedisConfiguration
         {
-            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700, PoolSize = 1,
+            Password = "redispw", Hosts = new[] { new RedisHost { Host = "localhost", Port = 6379 } }, ConnectTimeout = 700, PoolSize = 1
         };
 
 
@@ -40,14 +42,16 @@ public class SetupRedisConfiguration
         // Store engine so other test methods can use
         _slrStreamEngine = engine;
 
-        _uniqueKeys = new();
+        _uniqueKeys = new UniqueKeys();
     }
 
 
     /// <summary>
-    /// Setups the producer for a given test.  It also removes any initial messages created as part of the setup process.  For instance
-    /// the accessing of a stream that does not exist automatically creates it by sending a create message.  This removes that initial message
-    /// so it does not mess with the tests.
+    ///     Setups the producer for a given test.  It also removes any initial messages created as part of the setup process.
+    ///     For instance
+    ///     the accessing of a stream that does not exist automatically creates it by sending a create message.  This removes
+    ///     that initial message
+    ///     so it does not mess with the tests.
     /// </summary>
     /// <param name="config"></param>
     /// <returns></returns>
@@ -62,29 +66,55 @@ public class SetupRedisConfiguration
 
         // Ensure no messages - there probably is at least 1 - the creation message
         StreamEntry[] emptyMessages;
-        if (stream.IsConsumerGroup)
-        {
-            emptyMessages = await stream.ReadStreamGroupAsync(1000);
-            foreach (StreamEntry emptyMessage in emptyMessages)
-            {
-                await stream.AddPendingAcknowledgementAsync(emptyMessage);
-            }
-
-            // Ensure it is flushed.
-            await stream.FlushPendingAcknowledgementsAsync();
-        }
-        else
-        {
-            emptyMessages = await stream.ReadStreamAsync(1000);
-        }
+        emptyMessages = await stream.ReadStreamAsync(1000);
 
 
         RedisValue[] values = new RedisValue[emptyMessages.Length];
         int          i      = 0;
         foreach (StreamEntry emptyMessage in emptyMessages)
-        {
             values[i++] = emptyMessage.Id;
-        }
+
+        await stream.DeleteMessages(values);
+
+        // Reset any counters;
+        stream.ResetStatistics();
+        return stream;
+    }
+
+
+
+    /// <summary>
+    ///     Setups the producer for a given test.  It also removes any initial messages created as part of the setup process.
+    ///     For instance
+    ///     the accessing of a stream that does not exist automatically creates it by sending a create message.  This removes
+    ///     that initial message
+    ///     so it does not mess with the tests.
+    /// </summary>
+    /// <param name="config"></param>
+    /// <returns></returns>
+    public async Task<SLRStreamAppGroup> SetupTestProducerAppGroup(SLRStreamConfigAppGroup config)
+    {
+        // A.  Produce
+        SLRStreamAppGroup stream = await _slrStreamEngine.GetSLRStreamAppGroupAsync(config);
+        Assert.IsNotNull(stream, "A10:");
+
+        stream.ResetStatistics();
+
+
+        // Ensure no messages - there probably is at least 1 - the creation message
+        StreamEntry[] emptyMessages;
+        emptyMessages = await stream.ReadStreamGroupAsync(1000);
+        foreach (StreamEntry emptyMessage in emptyMessages)
+            await stream.AddPendingAcknowledgementAsync(emptyMessage);
+
+        // Ensure it is flushed.
+        await stream.FlushPendingAcknowledgementsAsync();
+
+
+        RedisValue[] values = new RedisValue[emptyMessages.Length];
+        int          i      = 0;
+        foreach (StreamEntry emptyMessage in emptyMessages)
+            values[i++] = emptyMessage.Id;
 
         await stream.DeleteMessages(values);
 
